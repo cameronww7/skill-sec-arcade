@@ -24,28 +24,30 @@ No restart, no manual registration. Every skill under `skills/` gets picked up a
 
 More cabinets get added as they're built — see [Adding a new skill](#adding-a-new-skill) below.
 
-## How it fits together
+## Repo layout
 
 ```
-.claude-plugin/
-├── plugin.json          ── plugin manifest (name, description, author)
-└── marketplace.json      ── catalog entry pointing "sec-arcade" -> ./
-
-skills/
-└── <skill-name>/
-    ├── SKILL.md           ── auto-discovered by Claude Code, one per skill
-    └── README.md           ── human-facing docs for that skill (optional)
-         │
-         ▼
-   Claude scans skills/*/SKILL.md at plugin load, matches the
-   frontmatter `description` against what you're doing, and
-   activates the skill automatically — no slash command needed.
-
-scripts/      ── helper scripts a SKILL.md can shell out to
-references/    ── shared cheatsheets/checklists skills can point at
-templates/
-└── SKILL.md.template  ── copy this to scaffold a new skill
+skill-sec-arcade/
+├── .claude-plugin/
+│   ├── plugin.json        ── plugin manifest (name, description, author)
+│   └── marketplace.json   ── catalog entry pointing "sec-arcade" -> ./
+├── skills/
+│   └── <skill-name>/
+│       ├── SKILL.md       ── auto-discovered by Claude Code, one per skill
+│       └── README.md      ── human-facing docs for that skill (optional)
+├── scripts/                ── helper scripts a SKILL.md can shell out to
+├── references/             ── shared cheatsheets/checklists skills can point at
+├── templates/
+│   └── SKILL.md.template  ── copy this to scaffold a new skill
+├── LICENSE
+└── README.md
 ```
+
+- **`.claude-plugin/`** — the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
+- **`skills/`** — one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically — no slash command needed. Currently one cabinet installed: [`security-detection-second-triage-reviewer`](skills/security-detection-second-triage-reviewer) (see table above).
+- **`scripts/`** — helper scripts a `SKILL.md` can shell out to. Empty until a skill needs one.
+- **`references/`** — shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Empty until a skill needs one.
+- **`templates/`** — `SKILL.md.template`, the starting point for scaffolding a new skill.
 
 ## Adding a new skill
 
@@ -66,22 +68,6 @@ The `description` is the only thing Claude reads to decide whether to reach for 
 
 Optionally add a `README.md` next to it (see the triage reviewer's for the pattern: Overview → Prerequisites → Installation → Usage → example output → Limitations) — `SKILL.md` is what Claude reads, `README.md` is what a human reads before installing it.
 
-## Repo structure at a glance
-
-```
-skill-sec-arcade/
-├── .claude-plugin/
-│   ├── plugin.json
-│   └── marketplace.json
-├── skills/
-│   └── security-detection-second-triage-reviewer/
-├── scripts/
-├── references/
-├── templates/
-│   └── SKILL.md.template
-└── README.md
-```
-
 ## License
 
-TBD — add a `LICENSE` file when this settles (MIT recommended for open sharing).
+[CC BY-SA 4.0](LICENSE) — Attribution-ShareAlike 4.0 International. Fork the cabinet, remix the skills, just share alike and give credit.

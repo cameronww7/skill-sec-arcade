@@ -1,6 +1,8 @@
-# Security Detection Second Triage Reviewer
+# 🔍 Security Detection Second Triage Reviewer
 
-A Claude Code skill that independently investigates security scanner findings, SAST, SCA, Secrets, IaC, and DAST, to determine whether they're true or false positives. It treats every scanner verdict as a claim to test, not a fact to relay, using actual repo access to trace reachability, sanitization, and exploitability instead of trusting the tool's severity rating.
+*A cabinet in the [sec-arcade](../../) — insert coin when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
+
+A Claude Code skill that independently investigates security scanner findings — SAST, SCA, Secrets, IaC, and DAST — to determine whether they're true or false positives. It treats every scanner verdict as a claim to test, not a fact to relay, using actual repo access to trace reachability, sanitization, and exploitability instead of trusting the tool's severity rating.
 
 ## Overview
 
@@ -20,7 +22,7 @@ Paste a finding, get back:
 ## Prerequisites
 
 - [Claude Code](https://claude.com/claude-code) installed and configured
-- Run from inside the repository the finding belongs to. This skill needs real file access, it reads source, greps for call sites, checks lockfiles and manifests. It does not work as a standalone chat skill with no codebase attached.
+- Run from inside the repository the finding belongs to. This skill needs real file access: it reads source, greps for call sites, and checks lockfiles and manifests. It does not work as a standalone chat skill with no codebase attached.
 - No additional dependencies, API keys, or configuration required
 
 ## Installation
@@ -119,10 +121,10 @@ Findings sharing one root cause (same CWE, rule, or package across several locat
 ## Limitations
 
 - Requires repo access. It won't produce a meaningful verdict from a finding alone with no codebase to check it against.
-- DAST findings carry a lower confidence ceiling by design, there's no live traffic or runtime behavior to inspect, only the handler code the endpoint maps to.
-- Best-guess verdicts are given even at Low or Very Low confidence rather than withheld, always check the confidence level before treating a verdict as final.
-- Not a replacement for judgment on genuinely ambiguous findings, it's meant to remove the obvious noise and hand you a well-reasoned starting point, not a rubber stamp in either direction.
+- DAST findings carry a lower confidence ceiling by design. There's no live traffic or runtime behavior to inspect, only the handler code the endpoint maps to.
+- Best-guess verdicts are given even at Low or Very Low confidence rather than withheld. Always check the confidence level before treating a verdict as final.
+- Not a replacement for judgment on genuinely ambiguous findings. It's meant to remove the obvious noise and hand you a well-reasoned starting point, not a rubber stamp in either direction.
 
 ## License
 
-Covered by the [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade) repo license (TBD).
+[CC BY-SA 4.0](../../LICENSE), same as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).
