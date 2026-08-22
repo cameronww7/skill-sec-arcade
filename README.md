@@ -5,7 +5,7 @@ A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for
 ![Claude Code Plugin](https://img.shields.io/badge/claude--code-plugin-5A67D8)
 ![Skills](https://img.shields.io/badge/skills-1-brightgreen)
 ![Focus](https://img.shields.io/badge/focus-AppSec-critical)
-![License](https://img.shields.io/badge/license-TBD-lightgrey)
+![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
 This repo is a Claude Code **plugin** — and its own **marketplace** — so the whole cabinet installs in two commands:
 
