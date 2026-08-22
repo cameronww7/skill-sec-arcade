@@ -2,6 +2,11 @@
 
 *A cabinet in the [sec-arcade](../../) — insert coin when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
 
+![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
+![Finding Types](https://img.shields.io/badge/finding_types-5-brightgreen)
+![Focus](https://img.shields.io/badge/focus-detection_triage-critical)
+![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
+
 A Claude Code skill that independently investigates security scanner findings — SAST, SCA, Secrets, IaC, and DAST — to determine whether they're true or false positives. It treats every scanner verdict as a claim to test, not a fact to relay, using actual repo access to trace reachability, sanitization, and exploitability instead of trusting the tool's severity rating.
 
 ## Overview
@@ -22,69 +27,61 @@ Paste a finding, get back:
 ## How it flows
 
 ```
-                     ┌──────────────────────────┐
-                     │  Paste a scanner finding  │
-                     │  (SAST/SCA/Secrets/       │
-                     │  IaC/DAST)                │
-                     └────────────┬──────────────┘
-                                  │
-                                  ▼
-                     ┌──────────────────────────┐
-                     │  1. Parse the input        │
-                     │  tool, rule, CWE/CVE,       │
-                     │  file:line or package,      │
-                     │  severity                   │
-                     └────────────┬──────────────┘
-                                  │
-                                  ▼
-                     ┌──────────────────────────┐
-                     │  2. One finding, or many?  │
-                     └──────┬────────────┬────────┘
-                same root cause│         │unrelated
-                               ▼         ▼ (cap 3-4/run)
-                     ┌──────────────┐ ┌──────────────┐
-                     │ investigate  │ │ investigate  │
-                     │ the pattern  │ │ each finding  │
-                     │ once, list   │ │ separately,   │
-                     │ every        │ │ capped to     │
-                     │ instance     │ │ avoid         │
-                     │              │ │ cross-talk    │
-                     └──────┬───────┘ └──────┬───────┘
-                            │                │
-                            └───────┬────────┘
-                                    ▼
-                     ┌──────────────────────────┐
-                     │  3. Investigate by type    │
-                     │  SAST    → trace input,     │
-                     │            check sanitizer  │
-                     │  SCA     → trace call graph,│
-                     │            check lockfile   │
-                     │  Secrets → live vs fixture, │
-                     │            check history    │
-                     │  IaC     → applied config,  │
-                     │            blast radius     │
-                     │  DAST    → endpoint→handler │
-                     │                              │
-                     │  Goal: find a reason it's   │
-                     │  WRONG before accepting     │
-                     │  it's right                 │
-                     └────────────┬──────────────┘
-                                  │
-                                  ▼
-                     ┌──────────────────────────┐
-                     │  4. Confidence              │
-                     │  Very High ──▶ Very Low     │
-                     └────────────┬──────────────┘
-                                  │
-                                  ▼
-                     ┌──────────────────────────┐
-                     │  5. Verdict block           │
-                     │  ✅ TRUE POSITIVE           │
-                     │  ❌ FALSE POSITIVE          │
-                     │  🟡 NEEDS MORE CONTEXT      │
-                     │  + evidence, severity,      │
-                     │    action                   │
-                     └──────────────────────────┘
+    ┌──────────────────────────────────────────┐
+    │ Paste a scanner finding                  │
+    │ (SAST / SCA / Secrets / IaC / DAST)      │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 1. Parse the input                       │
+    │ tool, rule, CWE/CVE, file:line or        │
+    │ package, severity                        │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 2. One finding, or many?                 │
+    │                                          │
+    │ same root cause  -> investigate the      │
+    │ pattern once, list every instance        │
+    │                                          │
+    │ unrelated        -> investigate each,    │
+    │ capped at 3-4 findings per run           │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 3. Investigate by type                   │
+    │ SAST     -> trace input, check           │
+    │             sanitizer & reachability     │
+    │ SCA      -> trace call graph, check      │
+    │             lockfile, direct/transitive  │
+    │ Secrets  -> live vs fixture, check       │
+    │             git history, rotation        │
+    │ IaC      -> applied config, blast        │
+    │             radius                       │
+    │ DAST     -> endpoint -> handler,         │
+    │             lower confidence ceiling     │
+    │                                          │
+    │ Goal: find a reason it's WRONG           │
+    │ before accepting it's right              │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 4. Determine confidence                  │
+    │ Very High -> High -> Medium ->           │
+    │ Low -> Very Low                          │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 5. Write the verdict block               │
+    │ TRUE POSITIVE / FALSE POSITIVE /         │
+    │ NEEDS MORE CONTEXT                       │
+    │ + evidence, severity, action             │
+    └──────────────────────────────────────────┘
 ```
 
 ## Prerequisites
@@ -145,7 +142,7 @@ Is this a real vulnerability or a false positive: [paste]
 
 The skill works silently, no narration of intermediate steps, and returns a single structured verdict block.
 
-### Example output
+### Example run
 
 ```
 ❌ FALSE POSITIVE | Confidence: High
@@ -193,10 +190,10 @@ Findings sharing one root cause (same CWE, rule, or package across several locat
 - Best-guess verdicts are given even at Low or Very Low confidence rather than withheld. Always check the confidence level before treating a verdict as final.
 - Not a replacement for judgment on genuinely ambiguous findings. It's meant to remove the obvious noise and hand you a well-reasoned starting point, not a rubber stamp in either direction.
 
-## See also
+## Next cabinet
 
 [`security-detection-false-positive-governor`](../security-detection-false-positive-governor) is the inverse of this skill: once a finding here comes back False Positive, that skill independently re-audits the verdict before it gets trusted.
 
 ## License
 
-[CC BY-SA 4.0](../../LICENSE), same as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).
+[CC BY-SA 4.0](../../LICENSE) — same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).

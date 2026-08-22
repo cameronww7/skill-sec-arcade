@@ -21,7 +21,23 @@ This is the inverse of [`security-detection-second-triage-reviewer`](../security
 
 If the user instead pastes a raw, untriaged scanner finding with no verdict attached, that's the other skill's job, not this one. This skill needs an existing FP claim to challenge; it doesn't do first-pass triage.
 
-## Step 1: Parse the input
+## Step 1: Isolate the review
+
+This skill's entire value depends on reaching its own conclusion, not on confirming one that's already sitting in the conversation. If the original FP verdict was produced earlier in this same session (for example by [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer) running right before this), or if the user has been discussing the finding with you before pasting the verdict, your own read of it is already anchored to that reasoning. Running the "independent" audit in that same context isn't independent, it's the same judgment re-reading its own homework and agreeing with itself.
+
+Do not perform Steps 2-6 yourself in this conversation. Before anything else, delegate the entire audit to a fresh subagent, one that starts with no memory of this conversation, not a fork or continuation of it. Give that subagent nothing but:
+
+- The raw pasted material exactly as the user provided it: the original finding, the FP verdict, and its justification.
+- The repo location/access it needs to investigate.
+- The full instructions in Steps 2-6 below.
+
+Do not pass along your own read of the finding, anything said earlier in this session about it, or any hint of what verdict a prior review (yours or anyone else's) reached. The subagent's conclusion has to come from the raw material and the repo alone, or the isolation is theater. Spawn a genuinely fresh, non-forked subagent for this, not a `fork`-style agent that inherits your context, the whole point is that it does not share what you already know.
+
+Wait for the subagent to finish, then relay its finished output back to the user as-is. Don't edit its verdict, soften it, add commentary on top of it, or skip the delegation because the case looks obvious from where you're sitting, that instinct is exactly the failure mode this skill exists to catch.
+
+If your environment genuinely has no way to spawn an isolated subagent, don't silently do the audit yourself in the shared context and present it as independent. Say plainly that this conversation already contains prior context on the finding and a truly independent check isn't possible here, and recommend the user open a fresh session and paste the FP verdict there instead.
+
+## Step 2: Parse the input
 
 Extract, from what's pasted:
 
@@ -33,23 +49,23 @@ If the justification is missing evidence entirely (just "FP, not exploitable" wi
 
 If a cited file or line doesn't resolve in the repo, don't assume it's a typo and move on, that's exactly the kind of gap this skill exists to catch. Flag it and keep investigating from what does resolve.
 
-## Step 2: Handle multiple findings
+## Step 3: Handle multiple findings
 
 Same batching logic as the sibling skill. Same root cause (same suppression reasoning applied across several instances): audit the reasoning once, list every file:line instance under the result. Unrelated findings: cap at 3-4 per run to avoid cross-contaminating evidence between independent audits in the same context window. If there are more, say so and either take the first 4 or ask the user to split it, based on how they framed the request.
 
 After a multi-finding run, close with a note recommending `/compact` before the next audit.
 
-## Step 3: Investigate, adversarially
+## Step 4: Investigate, adversarially
 
 Work silently. No narration of intermediate steps, no "let me check the citation now." The user gets the finished governance verdict, not a transcript.
 
 The stance here is different from a neutral re-investigation: you are not trying to independently arrive at a verdict, you are trying to find the specific reason the FP verdict is wrong. If you can't find one after genuinely trying, the verdict survives. If you stop looking the moment the first citation checks out, you've just rubber-stamped the same mistake the original reviewer might have made. Treat the absence of a counter-argument as the bar to clear, not the presence of a plausible-sounding one.
 
-### 3a. Audit every citation
+### 4a. Audit every citation
 
 Open every file:line, config value, or lockfile entry the original justification points to. Confirm it actually says what's claimed, not approximately, exactly. A citation that's off by a few lines, references a different function with a similar name, or describes stale behavior (the code has since changed) invalidates the reasoning built on it even if the general idea was right.
 
-### 3b. Find the load-bearing claim and attack it directly
+### 4b. Find the load-bearing claim and attack it directly
 
 Every FP justification rests on one or two claims doing all the work: "input is sanitized here," "this path is unreachable," "not attacker controlled," "already rotated," "config is overridden in prod." Identify that claim. It's the single point of failure in the argument. Spend your investigation budget there, not re-confirming details that were never in question.
 
@@ -61,11 +77,11 @@ Every FP justification rests on one or two claims doing all the work: "input is 
 - **SCA "not called" claims**: go one layer deeper than the original reviewer did. If they checked the direct import, check whether a transitive dependency or a dynamic call (reflection, string-based dispatch, plugin loading) reaches the vulnerable function anyway.
 - **IaC "overridden" claims**: confirm the override actually applies to the deployed environment in question, not a different environment or an unused module variant.
 
-### 3c. Steelman the true positive
+### 4c. Steelman the true positive
 
 Before writing the verdict, explicitly try to construct the strongest realistic case that this finding is exploitable, given everything you now know. If that case is weak, thin, or requires stacking multiple unlikely assumptions, that's real signal the FP verdict is solid, say so. If it's not weak, that's the overturn.
 
-## Step 4: Determine the governor's confidence
+## Step 5: Determine the governor's confidence
 
 Same five-level scale as the sibling skill, applied to how solid your own conclusion about the FP verdict is, not the original reviewer's confidence.
 
@@ -75,7 +91,7 @@ Same five-level scale as the sibling skill, applied to how solid your own conclu
 - **Low**: evidence is thin or mixed. Give a reasoned lean, not a confirmed answer.
 - **Very Low**: evidence is largely absent, e.g. the original justification cited nothing checkable. Don't default to upholding the FP just because you found nothing to contradict it, silence isn't confirmation.
 
-## Step 5: Write the output
+## Step 6: Write the output
 
 ### Governance philosophy: default to skepticism, not to agreement
 
