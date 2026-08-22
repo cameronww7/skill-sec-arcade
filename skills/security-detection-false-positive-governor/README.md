@@ -1,0 +1,201 @@
+# 🕵️ Security Detection False Positive Governor
+
+*A cabinet in the [sec-arcade](../../) — insert coin when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*
+
+A Claude Code skill that independently re-investigates a finding that's already been marked a False Positive, to check whether that verdict actually holds up. It's the inverse of [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer): where that skill checks whether a scanner's "this is real" verdict is real, this skill checks whether a triage's "this isn't real" verdict is real.
+
+## Overview
+
+An AI agent (or a human, mid-backlog, at 4pm) triaging security findings can be wrong in a very specific way: it finds one plausible reason a finding looks safe, stops looking, and writes it up convincingly. A confident, well-cited False Positive writeup is not the same thing as a correct one, the citations can be genuine and the conclusion can still miss a second call site, a bypassable sanitizer, or a compensating control that only covers some of the routes.
+
+This skill governs that process. It treats an existing FP verdict as a claim to be tested, not a fact to relay, audits every citation in the original justification, isolates the single load-bearing claim the verdict actually depends on, and tries directly to break it: unchecked call paths, sanitizer bypasses, indirect attacker influence, controls that don't cover every route, "already rotated" claims with no timestamp behind them.
+
+Paste an existing FP verdict, get back:
+
+- A governance verdict: Upheld, Overturned, or Insufficient Evidence
+- A confidence level (five-tier scale)
+- An audit of whether the original citations actually say what was claimed
+- The specific load-bearing claim the original verdict depended on, and whether it survived
+- What the original review missed, if anything
+- A clear next action, including what to check next if the evidence genuinely isn't enough to close it out
+
+## How it flows
+
+```
+                     ┌──────────────────────────┐
+                     │  Paste an EXISTING         │
+                     │  False Positive verdict    │
+                     │  + its justification       │
+                     └────────────┬──────────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  1. Parse the claim         │
+                     │  original finding, FP        │
+                     │  verdict, cited evidence,    │
+                     │  stated reasoning             │
+                     └────────────┬──────────────┘
+                                  │
+                            not FP?│
+                                  ├──────────▶ stop, nothing
+                                  │            adversarial to do
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  2. One verdict, or many?  │
+                     └──────┬────────────┬────────┘
+                  same reasoning│         │unrelated
+                               ▼         ▼ (cap 3-4/run)
+                     ┌──────────────┐ ┌──────────────┐
+                     │ audit the    │ │ audit each,  │
+                     │ reasoning    │ │ capped to     │
+                     │ once, list   │ │ avoid         │
+                     │ every        │ │ cross-talk    │
+                     │ instance     │ │               │
+                     └──────┬───────┘ └──────┬───────┘
+                            │                │
+                            └───────┬────────┘
+                                    ▼
+                     ┌──────────────────────────┐
+                     │  3. Attack the claim        │
+                     │  a. Audit every citation —  │
+                     │     does it say what was    │
+                     │     claimed?                │
+                     │  b. Find the load-bearing   │
+                     │     claim, attack it        │
+                     │     directly (bypass, other │
+                     │     call path, indirect      │
+                     │     control, stale rotation) │
+                     │  c. Steelman the true        │
+                     │     positive                 │
+                     │                              │
+                     │  Goal: break the FP verdict │
+                     │  before agreeing with it    │
+                     └────────────┬──────────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  4. Confidence               │
+                     │  Very High ──▶ Very Low      │
+                     │  (in THIS audit's own call)  │
+                     └────────────┬──────────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  5. Governance verdict       │
+                     │  🟢 UPHELD                   │
+                     │  🔴 OVERTURNED                │
+                     │  🟡 INSUFFICIENT EVIDENCE     │
+                     │     → treat as unresolved,    │
+                     │       never rubber-stamped    │
+                     │  + citation audit, gap,       │
+                     │    action                     │
+                     └──────────────────────────┘
+```
+
+## Prerequisites
+
+- [Claude Code](https://claude.com/claude-code) installed and configured
+- Run from inside the repository the finding belongs to. This skill needs real file access to independently verify citations and search for call paths the original review might have missed.
+- No additional dependencies, API keys, or configuration required
+
+## Installation
+
+This skill ships as part of the [`sec-arcade`](https://github.com/cameronww7/skill-sec-arcade) Claude Code plugin.
+
+### Option 1: Install the whole arcade (recommended)
+
+```bash
+/plugin marketplace add cameronww7/skill-sec-arcade
+/plugin install sec-arcade
+```
+
+You get this skill plus every other skill added to the arcade over time.
+
+### Option 2: Just this skill
+
+Copy this folder into your personal or project skills directory:
+
+```bash
+# personal, applies in every project
+git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
+cp -r /tmp/sec-arcade/skills/security-detection-false-positive-governor ~/.claude/skills/
+
+# project-level, this repo only
+mkdir -p .claude/skills
+cp -r /tmp/sec-arcade/skills/security-detection-false-positive-governor .claude/skills/
+```
+
+Claude Code picks up skills from either location automatically, no restart or manual registration required.
+
+## Usage
+
+Open Claude Code inside the repo the finding came from, then paste the completed False Positive writeup, suppression justification, or ticket comment as-is.
+
+```
+Verdict: False Positive
+Finding: Missing CSRF middleware on payment POST route (src/routes/payment.js:42)
+Justification: Route uses bearer token auth, not cookies, so CSRF
+doesn't apply. Confirmed in src/middleware/auth.js:18.
+```
+
+Or trigger it explicitly:
+
+```
+Double-check this false positive call: [paste]
+```
+
+```
+Audit this triage result before we suppress it: [paste]
+```
+
+The skill works silently and returns a single structured governance block.
+
+### Example output
+
+```
+🟢 UPHELD | Confidence: High
+
+Original verdict: False Positive, CSRF doesn't apply because auth
+is bearer-token based, not session/cookie based.
+
+Load-bearing claim: This route has no ambient credential (cookie
+or session) that a forged cross-site request could ride on.
+
+Citation audit: src/middleware/auth.js:18 checked, it does exactly
+what was claimed, validates a signed bearer token pulled from the
+Authorization header and rejects the request if absent.
+
+What I found: Searched every route mounted under
+src/routes/payment.js for a second auth path. All five routes in
+this file go through requireApiAuth exclusively, none fall back to
+session auth. No cookie-based session middleware is registered
+anywhere in src/app.js.
+
+Why: CSRF requires an ambient credential the browser attaches
+automatically. Bearer tokens require explicit client action to
+attach and there's no session fallback on this route or its
+neighbors. The load-bearing claim holds under a broader check than
+the original review ran.
+
+Action: Upheld, suppress as originally justified. No further work.
+```
+
+## What this skill does and doesn't replace
+
+- It doesn't re-run first-pass triage. If you paste a raw, unverdicted scanner finding, that's [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer)'s job.
+- It doesn't confirm True Positive verdicts. It exists specifically to pressure-test dismissals; a finding already marked True Positive doesn't need this skill.
+- It doesn't defer to "insufficient evidence, so the FP stands." Insufficient evidence means the suppression isn't earned yet, the output routes those to further review instead of silently upholding them.
+
+## Multiple findings
+
+Findings sharing one suppression rationale (same reasoning applied across several instances) are audited once and reported as a single verdict with every instance listed. Unrelated findings are capped at 3-4 per run to avoid cross-contaminating evidence between independent audits in the same context window. Larger batches get flagged so you can split them up.
+
+## Limitations
+
+- Requires repo access. It can't independently verify a citation it can't go read.
+- Confidence tracks the strength of this skill's own audit, not the original reviewer's stated confidence, a Very High confidence FP claim with unchecked call paths can still get overturned.
+- Not a replacement for judgment on genuinely ambiguous cases. It's built to catch the specific failure mode of a confident, plausible, but incomplete dismissal, not to relitigate every closed finding forever.
+
+## License
+
+[CC BY-SA 4.0](../../LICENSE), same as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).

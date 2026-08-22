@@ -19,6 +19,74 @@ Paste a finding, get back:
 - Package health flags for SCA findings (staleness, deprecated, abandoned)
 - A copy-paste suppression justification if it's a false positive
 
+## How it flows
+
+```
+                     ┌──────────────────────────┐
+                     │  Paste a scanner finding  │
+                     │  (SAST/SCA/Secrets/       │
+                     │  IaC/DAST)                │
+                     └────────────┬──────────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  1. Parse the input        │
+                     │  tool, rule, CWE/CVE,       │
+                     │  file:line or package,      │
+                     │  severity                   │
+                     └────────────┬──────────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  2. One finding, or many?  │
+                     └──────┬────────────┬────────┘
+                same root cause│         │unrelated
+                               ▼         ▼ (cap 3-4/run)
+                     ┌──────────────┐ ┌──────────────┐
+                     │ investigate  │ │ investigate  │
+                     │ the pattern  │ │ each finding  │
+                     │ once, list   │ │ separately,   │
+                     │ every        │ │ capped to     │
+                     │ instance     │ │ avoid         │
+                     │              │ │ cross-talk    │
+                     └──────┬───────┘ └──────┬───────┘
+                            │                │
+                            └───────┬────────┘
+                                    ▼
+                     ┌──────────────────────────┐
+                     │  3. Investigate by type    │
+                     │  SAST    → trace input,     │
+                     │            check sanitizer  │
+                     │  SCA     → trace call graph,│
+                     │            check lockfile   │
+                     │  Secrets → live vs fixture, │
+                     │            check history    │
+                     │  IaC     → applied config,  │
+                     │            blast radius     │
+                     │  DAST    → endpoint→handler │
+                     │                              │
+                     │  Goal: find a reason it's   │
+                     │  WRONG before accepting     │
+                     │  it's right                 │
+                     └────────────┬──────────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  4. Confidence              │
+                     │  Very High ──▶ Very Low     │
+                     └────────────┬──────────────┘
+                                  │
+                                  ▼
+                     ┌──────────────────────────┐
+                     │  5. Verdict block           │
+                     │  ✅ TRUE POSITIVE           │
+                     │  ❌ FALSE POSITIVE          │
+                     │  🟡 NEEDS MORE CONTEXT      │
+                     │  + evidence, severity,      │
+                     │    action                   │
+                     └──────────────────────────┘
+```
+
 ## Prerequisites
 
 - [Claude Code](https://claude.com/claude-code) installed and configured
@@ -124,6 +192,10 @@ Findings sharing one root cause (same CWE, rule, or package across several locat
 - DAST findings carry a lower confidence ceiling by design. There's no live traffic or runtime behavior to inspect, only the handler code the endpoint maps to.
 - Best-guess verdicts are given even at Low or Very Low confidence rather than withheld. Always check the confidence level before treating a verdict as final.
 - Not a replacement for judgment on genuinely ambiguous findings. It's meant to remove the obvious noise and hand you a well-reasoned starting point, not a rubber stamp in either direction.
+
+## See also
+
+[`security-detection-false-positive-governor`](../security-detection-false-positive-governor) is the inverse of this skill: once a finding here comes back False Positive, that skill independently re-audits the verdict before it gets trusted.
 
 ## License
 
