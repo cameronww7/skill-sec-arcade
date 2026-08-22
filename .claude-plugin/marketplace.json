@@ -1,0 +1,13 @@
+{
+  "name": "sec-arcade",
+  "owner": {
+    "name": "TryHard3r"
+  },
+  "plugins": [
+    {
+      "name": "sec-arcade",
+      "source": "./",
+      "description": "A leveling-up arcade of Claude Code skills for AppSec and security engineering."
+    }
+  ]
+}

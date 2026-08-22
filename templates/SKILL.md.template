@@ -1,0 +1,24 @@
+---
+name: skill-name-here
+description: One or two sentences describing what this skill does and, critically, WHEN it should trigger — the phrases, file types, or task shapes that should make Claude reach for it.
+---
+
+# Skill Name Here
+
+Brief statement of what this skill helps with.
+
+## When to use this
+
+- Trigger condition 1
+- Trigger condition 2
+
+## Steps / Approach
+
+1. ...
+2. ...
+
+## Reference material
+
+Point to anything under `../../references/` or `../../scripts/` this skill relies on, e.g.:
+- `${CLAUDE_PLUGIN_ROOT}/references/<file>.md`
+- `${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py`

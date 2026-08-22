@@ -1,0 +1,8 @@
+{
+  "name": "sec-arcade",
+  "description": "A leveling-up arcade of Claude Code skills for AppSec and security engineering.",
+  "author": {
+    "name": "TryHard3r"
+  },
+  "keywords": ["security", "appsec", "pentest", "vuln"]
+}
