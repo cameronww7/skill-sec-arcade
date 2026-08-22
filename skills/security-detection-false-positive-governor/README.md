@@ -171,27 +171,39 @@ The skill works silently and returns a single structured governance block.
 ```
 🟢 UPHELD | Confidence: High
 
+Summary: The original False Positive call was right. This route only
+takes a manually-attached bearer token, never a browser-attached
+cookie, so there's no CSRF risk here, and that holds for every route
+in the file, not just the one the original review checked.
+
 Original verdict: False Positive, CSRF doesn't apply because auth
 is bearer-token based, not session/cookie based.
 
 Load-bearing claim: This route has no ambient credential (cookie
 or session) that a forged cross-site request could ride on.
 
-Citation audit: src/middleware/auth.js:18 checked, it does exactly
-what was claimed, validates a signed bearer token pulled from the
-Authorization header and rejects the request if absent.
+Citation audit:
+- `src/middleware/auth.js:18` (cited as: validates a signed bearer
+  token, rejects if absent) — HOLDS UP: `requireApiAuth()` reads the
+  `Authorization` header and rejects the request when it's missing
 
-What I found: Searched every route mounted under
-src/routes/payment.js for a second auth path. All five routes in
-this file go through requireApiAuth exclusively, none fall back to
-session auth. No cookie-based session middleware is registered
-anywhere in src/app.js.
+Independent evidence:
+- `src/routes/payment.js:5-42` — all five routes in this file call
+  `router.use(requireApiAuth)`, none register a session-based auth
+  path as a fallback
+- `src/app.js` — no `express-session` or cookie-session middleware
+  is registered anywhere in the app
 
-Why: CSRF requires an ambient credential the browser attaches
-automatically. Bearer tokens require explicit client action to
-attach and there's no session fallback on this route or its
-neighbors. The load-bearing claim holds under a broader check than
-the original review ran.
+Justification:
+- `src/middleware/auth.js:18` confirms the only credential this
+  route accepts is a bearer token, which the browser never attaches
+  automatically the way it does a session cookie
+- `src/routes/payment.js:5-42` shows this holds for every route in
+  the file, not just the one line the original review cited
+- `src/app.js` rules out a session fallback existing anywhere else
+  in the app that could still be exposed to CSRF
+- the load-bearing claim holds under a broader check than the
+  original review ran
 
 Action: Upheld, suppress as originally justified. No further work.
 ```

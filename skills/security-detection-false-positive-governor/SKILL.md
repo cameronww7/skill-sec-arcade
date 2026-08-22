@@ -105,36 +105,51 @@ Same register as the sibling skill: a senior AppSec engineer reviewing a colleag
 - No preamble, no filler, no flattery. Start at the verdict line.
 - No closing summary. End at Action.
 - Active voice throughout.
-- Every claim in the audit is backed by a file:line citation you personally verified, or explicitly marked unverifiable.
+- Every claim in the audit is backed by a file:line citation you personally verified, and the function or symbol name where one exists, or explicitly marked unverifiable.
+- Keep the sections doing different jobs. "Summary" is the plain-language headline, no citations, no code, written for someone who may only read that one line. "Citation audit" and "Independent evidence" state only what's factually at each location, no interpretation. "Justification" is where the reasoning happens, and every bullet in it has to point back at a specific line above it, not introduce a new unsupported claim.
 - No hedge words unless confidence is genuinely Low or Very Low.
 - Say plainly when the original justification was solid. This isn't about finding fault for its own sake, a correctly upheld FP is a good outcome and should read as one, not as a grudging concession.
 - Say just as plainly when it wasn't. Don't soften an overturn to spare the original reviewer, human or AI, that defeats the purpose.
 
 ### Format
 
-Use this template exactly. Omit optional lines when they don't apply, don't leave placeholder text.
+Use this template exactly. Omit optional lines when they don't apply, don't leave placeholder text. "Summary" always comes first, right after the verdict line, and is the one field written for a reader with no security background: no jargon, no code, no citations. Everything below it is for the reader who wants to verify the call themselves.
 
 ```
 🟢 UPHELD | Confidence: [level]
 [or 🔴 OVERTURNED | Confidence: [level]]
 [or 🟡 INSUFFICIENT EVIDENCE — treat as unresolved | Confidence: [level]]
 
+Summary: [2-3 plain-language sentences. What the original verdict
+claimed and, in plain terms, whether this audit agrees and why. No
+jargon, no citations, no code. A reader who stops here should still
+understand the call.]
+
 Original verdict: [what was claimed, e.g. "False Positive, input is sanitized"]
 
 Load-bearing claim: [the one claim the FP verdict actually depends on]
 
-Citation audit: [did the cited file:line evidence say what was claimed — call out any that didn't]
+Citation audit:
+- `path/file.ext:line` (cited as: [what the original justification claimed it shows]) — HOLDS UP / DOES NOT HOLD UP: [what's actually there]
+- `path/file.ext:line` (cited as: [...]) — HOLDS UP / DOES NOT HOLD UP: [...]
+[one bullet per citation the original justification relied on]
 
-What I found: [2-4 lines, your own independent evidence, file:line, that a reader could verify themselves]
+Independent evidence:
+- `path/file.ext:line` — `functionOrSymbolName()` — [what this audit found on its own, factual, no interpretation]
+- `path/file.ext:line` — [...]
+[2-5 bullets — results of chasing alternate call paths, bypasses, stale claims, or anything the original review didn't check]
 
-Why: [short paragraph — does the load-bearing claim survive, and specifically why or why not]
+Justification:
+- [reasoning bullet, cites specific lines from Citation audit and/or Independent evidence above by file:line]
+- [reasoning bullet, cites evidence above]
+[2-4 bullets. This is where "does the load-bearing claim survive" gets answered, no new facts, only bullets that connect the evidence to the verdict]
 
 Gap in original review: [what the original reviewer missed or didn't check — omit only if the original review was genuinely thorough]
 
 Action: [Upheld: suppress as originally justified, no further work. Overturned: reclassify as True Positive, route for a fix, cite the reachable path that proves it. Insufficient evidence: name the specific thing that would resolve this, and who/what can check it, don't suppress until it's answered.]
 ```
 
-For batched same-reasoning findings, use one block, list every file:line instance under "What I found" instead of a single citation.
+For batched same-reasoning findings, use one block, list every file:line instance as its own bullet under "Independent evidence" instead of a single citation.
 
 If the run covered multiple findings, add one line after the last verdict block:
 

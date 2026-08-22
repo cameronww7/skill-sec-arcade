@@ -147,17 +147,30 @@ The skill works silently, no narration of intermediate steps, and returns a sing
 ```
 ❌ FALSE POSITIVE | Confidence: High
 
-What the tool found: Missing CSRF middleware on the payment POST route.
+Summary: The scanner flagged this payment route for missing CSRF
+protection, but CSRF can't happen here. The route only accepts a
+manually-attached bearer token, not a browser-attached cookie, so
+there's nothing for a forged request to ride on.
 
-What I checked: src/routes/payment.js:42 sits behind requireApiAuth
-middleware (src/middleware/auth.js:18), which validates a signed
-bearer token on every request. This route has no session or cookie
-based auth, so CSRF doesn't apply, there's no ambient credential
-for a forged request to ride on.
+Evidence:
+- `src/routes/payment.js:42` — `router.post('/charge', ...)` — route is
+  registered with no CSRF middleware in its handler chain
+- `src/routes/payment.js:38` — `router.use(requireApiAuth)` — every route
+  in this file, including line 42, sits behind this middleware
+- `src/middleware/auth.js:18` — `requireApiAuth()` — validates a signed
+  bearer token pulled from the `Authorization` header, rejects if absent
+- `src/app.js` — no `express-session` or cookie-session middleware is
+  registered anywhere in the app
 
-Why: CSRF is a session-riding attack. This endpoint only accepts
-a bearer token the browser doesn't attach automatically, so the
-attack class doesn't apply here regardless of missing middleware.
+Justification:
+- CSRF is a session-riding attack: it relies on the browser auto-attaching
+  an ambient credential (a cookie) to a forged cross-site request
+- `src/middleware/auth.js:18` shows the only credential this route accepts
+  is a bearer token, which requires explicit client action to attach and
+  is never sent automatically by a browser
+- `src/app.js` confirms there's no session/cookie auth anywhere in the app
+  for CSRF to ride on in the first place
+- the attack class doesn't apply here regardless of the missing middleware
 
 Suppression Justification: This route uses bearer token
 authentication, not cookies or sessions, so CSRF protection doesn't

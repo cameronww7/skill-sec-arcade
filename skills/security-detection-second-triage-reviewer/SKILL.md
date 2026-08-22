@@ -92,7 +92,8 @@ Write like a senior AppSec engineer briefing a junior engineer on a finding they
 - No preamble, no filler words, no flattery. Start at the verdict line.
 - No closing summary or restatement of what you just said. End at Action.
 - Active voice throughout.
-- No vague evidence. Every claim in "What I checked" and "Why" is backed by a file:line citation, or explicitly marked as unverified.
+- No vague evidence. Every claim in "Evidence" and "Justification" is backed by a file:line citation and, where one exists, the function or symbol name, or explicitly marked as unverified.
+- Keep the sections doing different jobs. "Summary" is the plain-language headline, no citations, no code, no CWE/CVE numbers, written for someone who may only read that one line. "Evidence" states only what's factually at each location, no interpretation. "Justification" is where the reasoning happens, and every bullet in it has to point back at a specific line in "Evidence", not introduce a new unsupported claim.
 - No hedge words (may, might, could potentially) unless the confidence level is genuinely Low or Very Low. If the evidence is solid, say so plainly.
 - State the finding, the risk, and the required action explicitly. Don't imply them.
 - Don't assume the reader knows why a pattern is dangerous, one clause is enough context, not a lecture on what SQL injection is.
@@ -102,18 +103,28 @@ Write like a senior AppSec engineer briefing a junior engineer on a finding they
 
 ### Format
 
-Use this template exactly. Omit optional lines when they don't apply, don't leave placeholder text.
+Use this template exactly. Omit optional lines when they don't apply, don't leave placeholder text. "Summary" always comes first, right after the verdict line, and is the one field written for a reader with no security background: no jargon, no CWE/CVE numbers, no code, no citations. Everything below it is for the reader who wants to verify the call themselves.
 
 ```
 ✅ TRUE POSITIVE | Confidence: [level]
 [or ❌ FALSE POSITIVE | Confidence: [level]]
 [or 🟡 NEEDS MORE CONTEXT | Confidence: [level]]
 
-What the tool found: [one line, plain terms]
+Summary: [2-3 plain-language sentences. What the tool flagged and, in
+plain terms, why the verdict landed where it did. No jargon, no
+citations, no code. A reader who stops here should still understand
+the call.]
 
-What I checked: [2-4 lines, file:line evidence a reader could verify themselves]
+Evidence:
+- `path/file.ext:line` — `functionOrSymbolName()` — [what's actually there, factual, no interpretation]
+- `path/file.ext:line` — `functionOrSymbolName()` — [what's actually there]
+- `path/file.ext:line` — [config value, lockfile entry, package version, git log entry, etc.]
+[2-5 bullets, ordered the way the trace actually runs: source, then each hop, then the sink or the control that stops it]
 
-Why: [short paragraph, the actual reasoning]
+Justification:
+- [reasoning bullet, cites one or more lines from Evidence above by file:line]
+- [reasoning bullet, cites Evidence above]
+[2-4 bullets. This is where the "why" happens, no new facts, only bullets that connect Evidence to the verdict]
 
 Severity: Critical (tool) → Medium (actual)     [only when tool severity and actual severity diverge]
 
@@ -126,7 +137,7 @@ Suppression Justification: [FP only, 5 sentences max, plain language, ready to p
 Action: [fix guidance for TP, or what would raise confidence for Needs More Context]
 ```
 
-For batched same-root-cause findings, use one block, list every file:line instance under "What I checked" instead of a single citation.
+For batched same-root-cause findings, use one block, list every file:line instance as its own bullet under "Evidence" instead of a single citation.
 
 If the run covered multiple findings, add one line after the last verdict block:
 
