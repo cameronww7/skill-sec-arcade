@@ -1,6 +1,6 @@
 ---
 name: skill-name-here
-description: One or two sentences describing what this skill does and, critically, WHEN it should trigger — the phrases, file types, or task shapes that should make Claude reach for it.
+description: One or two sentences describing what this skill does and, critically, WHEN it should trigger: the phrases, file types, or task shapes that should make Claude reach for it.
 ---
 
 # Skill Name Here

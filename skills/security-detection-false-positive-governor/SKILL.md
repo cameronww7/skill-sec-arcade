@@ -118,7 +118,7 @@ Use this template exactly. Omit optional lines when they don't apply, don't leav
 ```
 🟢 UPHELD | Confidence: [level]
 [or 🔴 OVERTURNED | Confidence: [level]]
-[or 🟡 INSUFFICIENT EVIDENCE — treat as unresolved | Confidence: [level]]
+[or 🟡 INSUFFICIENT EVIDENCE, treat as unresolved | Confidence: [level]]
 
 Summary: [2-3 plain-language sentences. What the original verdict
 claimed and, in plain terms, whether this audit agrees and why. No
@@ -130,21 +130,21 @@ Original verdict: [what was claimed, e.g. "False Positive, input is sanitized"]
 Load-bearing claim: [the one claim the FP verdict actually depends on]
 
 Citation audit:
-- `path/file.ext:line` (cited as: [what the original justification claimed it shows]) — HOLDS UP / DOES NOT HOLD UP: [what's actually there]
-- `path/file.ext:line` (cited as: [...]) — HOLDS UP / DOES NOT HOLD UP: [...]
+- `path/file.ext:line` (cited as: [what the original justification claimed it shows]): HOLDS UP / DOES NOT HOLD UP: [what's actually there]
+- `path/file.ext:line` (cited as: [...]): HOLDS UP / DOES NOT HOLD UP: [...]
 [one bullet per citation the original justification relied on]
 
 Independent evidence:
-- `path/file.ext:line` — `functionOrSymbolName()` — [what this audit found on its own, factual, no interpretation]
-- `path/file.ext:line` — [...]
-[2-5 bullets — results of chasing alternate call paths, bypasses, stale claims, or anything the original review didn't check]
+- `path/file.ext:line`, `functionOrSymbolName()`: [what this audit found on its own, factual, no interpretation]
+- `path/file.ext:line`: [...]
+[2-5 bullets, results of chasing alternate call paths, bypasses, stale claims, or anything the original review didn't check]
 
 Justification:
 - [reasoning bullet, cites specific lines from Citation audit and/or Independent evidence above by file:line]
 - [reasoning bullet, cites evidence above]
 [2-4 bullets. This is where "does the load-bearing claim survive" gets answered, no new facts, only bullets that connect the evidence to the verdict]
 
-Gap in original review: [what the original reviewer missed or didn't check — omit only if the original review was genuinely thorough]
+Gap in original review: [what the original reviewer missed or didn't check, omit only if the original review was genuinely thorough]
 
 Action: [Upheld: suppress as originally justified, no further work. Overturned: reclassify as True Positive, route for a fix, cite the reachable path that proves it. Insufficient evidence: name the specific thing that would resolve this, and who/what can check it, don't suppress until it's answered.]
 ```

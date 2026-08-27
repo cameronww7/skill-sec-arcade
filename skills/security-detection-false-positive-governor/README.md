@@ -1,6 +1,6 @@
 # 🕵️ Security Detection False Positive Governor
 
-*A cabinet in the [sec-arcade](../../) — insert coin when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*
+*A cabinet in the [sec-arcade](../../): insert coin when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Verdicts](https://img.shields.io/badge/verdicts-3-brightgreen)
@@ -184,14 +184,14 @@ or session) that a forged cross-site request could ride on.
 
 Citation audit:
 - `src/middleware/auth.js:18` (cited as: validates a signed bearer
-  token, rejects if absent) — HOLDS UP: `requireApiAuth()` reads the
+  token, rejects if absent): HOLDS UP: `requireApiAuth()` reads the
   `Authorization` header and rejects the request when it's missing
 
 Independent evidence:
-- `src/routes/payment.js:5-42` — all five routes in this file call
+- `src/routes/payment.js:5-42`: all five routes in this file call
   `router.use(requireApiAuth)`, none register a session-based auth
   path as a fallback
-- `src/app.js` — no `express-session` or cookie-session middleware
+- `src/app.js`: no `express-session` or cookie-session middleware
   is registered anywhere in the app
 
 Justification:
@@ -230,4 +230,4 @@ Findings sharing one suppression rationale (same reasoning applied across severa
 
 ## License
 
-[CC BY-SA 4.0](../../LICENSE) — same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).
+[CC BY-SA 4.0](../../LICENSE), same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).

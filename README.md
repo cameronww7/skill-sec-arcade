@@ -7,7 +7,7 @@ A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for
 ![Focus](https://img.shields.io/badge/focus-AppSec-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
-This repo is a Claude Code **plugin** — and its own **marketplace** — so the whole cabinet installs in two commands:
+This repo is a Claude Code **plugin**, and its own **marketplace**, so the whole cabinet installs in two commands:
 
 ```bash
 /plugin marketplace add cameronww7/skill-sec-arcade
@@ -24,7 +24,7 @@ No restart, no manual registration. Every skill under `skills/` gets picked up a
 | [`security-detection-false-positive-governor`](skills/security-detection-false-positive-governor) | The inverse: takes a finding someone (human or AI) already marked False Positive and independently audits that verdict, trying to break the justification before agreeing to close it out. | An FP/suppression writeup exists and you want a skeptical second opinion before it's trusted. |
 | [`code-threat-mapper`](skills/code-threat-mapper) | Reads a repo like an AppSec engineer on their first week: maps the architecture, draws an ASCII diagram, and threat models it with STRIDE, mapped to the OWASP Top 10 and Cheat Sheet Series. Teaching tone, not a scan report, built to be kept and reused. | You want a threat model, an attack-surface map, or a security-focused walkthrough of a codebase, not a validation of one specific finding. |
 
-More cabinets get added as they're built — see [Adding a new skill](#adding-a-new-skill) below.
+More cabinets get added as they're built, see [Adding a new skill](#adding-a-new-skill) below.
 
 ## Repo layout
 
@@ -45,11 +45,11 @@ skill-sec-arcade/
 └── README.md
 ```
 
-- **`.claude-plugin/`** — the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
+- **`.claude-plugin/`**: the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
 - **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently three cabinets installed: [`security-detection-second-triage-reviewer`](skills/security-detection-second-triage-reviewer), [`security-detection-false-positive-governor`](skills/security-detection-false-positive-governor), and [`code-threat-mapper`](skills/code-threat-mapper) (see table above).
-- **`scripts/`** — helper scripts a `SKILL.md` can shell out to. Empty until a skill needs one.
+- **`scripts/`**: helper scripts a `SKILL.md` can shell out to. Empty until a skill needs one.
 - **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `code-threat-mapper`'s OWASP Top 10 and language attack-vector lookups.
-- **`templates/`** — `SKILL.md.template`, the starting point for scaffolding a new skill.
+- **`templates/`**: `SKILL.md.template`, the starting point for scaffolding a new skill.
 
 ## Adding a new skill
 
@@ -62,14 +62,14 @@ Fill in the frontmatter:
 ```yaml
 ---
 name: skill-name-here
-description: What it does, and — critically — WHEN it should trigger.
+description: What it does, and, critically, WHEN it should trigger.
 ---
 ```
 
 The `description` is the only thing Claude reads to decide whether to reach for the skill, so front-load the trigger phrases (tool names, task shapes, things the user might literally type) rather than just summarizing the skill.
 
-Optionally add a `README.md` next to it (see the triage reviewer's for the pattern: Overview → Prerequisites → Installation → Usage → example output → Limitations) — `SKILL.md` is what Claude reads, `README.md` is what a human reads before installing it.
+Optionally add a `README.md` next to it (see the triage reviewer's for the pattern: Overview → Prerequisites → Installation → Usage → example output → Limitations). `SKILL.md` is what Claude reads, `README.md` is what a human reads before installing it.
 
 ## License
 
-[CC BY-SA 4.0](LICENSE) — Attribution-ShareAlike 4.0 International. Fork the cabinet, remix the skills, just share alike and give credit.
+[CC BY-SA 4.0](LICENSE): Attribution-ShareAlike 4.0 International. Fork the cabinet, remix the skills, just share alike and give credit.

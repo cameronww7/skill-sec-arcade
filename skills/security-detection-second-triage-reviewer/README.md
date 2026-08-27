@@ -1,13 +1,13 @@
 # 🔍 Security Detection Second Triage Reviewer
 
-*A cabinet in the [sec-arcade](../../) — insert coin when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
+*A cabinet in the [sec-arcade](../../): insert coin when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Finding Types](https://img.shields.io/badge/finding_types-5-brightgreen)
 ![Focus](https://img.shields.io/badge/focus-detection_triage-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
-A Claude Code skill that independently investigates security scanner findings — SAST, SCA, Secrets, IaC, and DAST — to determine whether they're true or false positives. It treats every scanner verdict as a claim to test, not a fact to relay, using actual repo access to trace reachability, sanitization, and exploitability instead of trusting the tool's severity rating.
+A Claude Code skill that independently investigates security scanner findings (SAST, SCA, Secrets, IaC, and DAST) to determine whether they're true or false positives. It treats every scanner verdict as a claim to test, not a fact to relay, using actual repo access to trace reachability, sanitization, and exploitability instead of trusting the tool's severity rating.
 
 ## Overview
 
@@ -153,13 +153,13 @@ manually-attached bearer token, not a browser-attached cookie, so
 there's nothing for a forged request to ride on.
 
 Evidence:
-- `src/routes/payment.js:42` — `router.post('/charge', ...)` — route is
+- `src/routes/payment.js:42`, `router.post('/charge', ...)`: route is
   registered with no CSRF middleware in its handler chain
-- `src/routes/payment.js:38` — `router.use(requireApiAuth)` — every route
+- `src/routes/payment.js:38`, `router.use(requireApiAuth)`: every route
   in this file, including line 42, sits behind this middleware
-- `src/middleware/auth.js:18` — `requireApiAuth()` — validates a signed
+- `src/middleware/auth.js:18`, `requireApiAuth()`: validates a signed
   bearer token pulled from the `Authorization` header, rejects if absent
-- `src/app.js` — no `express-session` or cookie-session middleware is
+- `src/app.js`: no `express-session` or cookie-session middleware is
   registered anywhere in the app
 
 Justification:
@@ -209,4 +209,4 @@ Findings sharing one root cause (same CWE, rule, or package across several locat
 
 ## License
 
-[CC BY-SA 4.0](../../LICENSE) — same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).
+[CC BY-SA 4.0](../../LICENSE), same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).

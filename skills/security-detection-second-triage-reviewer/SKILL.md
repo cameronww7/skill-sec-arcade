@@ -116,9 +116,9 @@ citations, no code. A reader who stops here should still understand
 the call.]
 
 Evidence:
-- `path/file.ext:line` — `functionOrSymbolName()` — [what's actually there, factual, no interpretation]
-- `path/file.ext:line` — `functionOrSymbolName()` — [what's actually there]
-- `path/file.ext:line` — [config value, lockfile entry, package version, git log entry, etc.]
+- `path/file.ext:line`, `functionOrSymbolName()`: [what's actually there, factual, no interpretation]
+- `path/file.ext:line`, `functionOrSymbolName()`: [what's actually there]
+- `path/file.ext:line`: [config value, lockfile entry, package version, git log entry, etc.]
 [2-5 bullets, ordered the way the trace actually runs: source, then each hop, then the sink or the control that stops it]
 
 Justification:
@@ -128,9 +128,9 @@ Justification:
 
 Severity: Critical (tool) → Medium (actual)     [only when tool severity and actual severity diverge]
 
-Package Health: [SCA only — staleness, deprecated/EOL/abandoned status, direct vs transitive]
+Package Health: [SCA only; staleness, deprecated/EOL/abandoned status, direct vs transitive]
 
-Secondary Note: [FP only, when applicable — a pattern that's currently not exploitable but is bad practice or one change away from being exploitable]
+Secondary Note: [FP only, when applicable: a pattern that's currently not exploitable but is bad practice or one change away from being exploitable]
 
 Suppression Justification: [FP only, 5 sentences max, plain language, ready to paste into a ticket or PR comment]
 
