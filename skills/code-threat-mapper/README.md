@@ -19,6 +19,7 @@ Point it at a repo, get back:
 
 - An ASCII diagram of the components, data flows, and trust boundaries
 - A plain-language "what this does" section anyone on the team can read
+- A "Worth a Second Look" checklist: notable authentication gaps, risky cryptography, weak access control, and anything else that catches attention during recon, each a quick file:line nudge to go check it yourself
 - A STRIDE threat breakdown per component and trust boundary, each rated with a plain Likelihood × Impact matrix
 - OWASP Top 10 tags with the specific Cheat Sheet Series sheet to read for remediation
 - Language-specific attack vector notes, only where the codebase actually has supporting code for them
@@ -56,7 +57,14 @@ Point it at a repo, get back:
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 4-6. Threat model                        │
+    │ 4. Worth a Second Look                   │
+    │ fast checklist: auth gaps, risky crypto, │
+    │ weak access control, other notables      │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 5-7. Threat model                        │
     │ STRIDE per component/boundary  ->        │
     │ OWASP Top 10 + Cheat Sheet tags ->        │
     │ language-specific vectors                │
@@ -64,20 +72,20 @@ Point it at a repo, get back:
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 7. Rate each threat                      │
+    │ 8. Rate each threat                      │
     │ Likelihood x Impact -> risk tier         │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 8. Write the report                      │
-    │ diagram + overview + threats + OWASP +   │
-    │ prioritized actions + glossary           │
+    │ 9. Write the report                      │
+    │ diagram + overview + worth-a-look list + │
+    │ threats + OWASP + actions + glossary     │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 9. Offer to save                         │
+    │ 10. Offer to save                        │
     │ keep inline, or write to THREAT_MODEL.md │
     └──────────────────────────────────────────┘
 ```
@@ -138,6 +146,20 @@ Walk me through the security risks in this codebase
 For a large monorepo, the skill will ask you to scope to a specific service or directory before it starts, rather than guessing.
 
 ### Example excerpt
+
+```
+## Worth a Second Look
+
+### Authentication
+- 🔑 `src/routes/admin.js:61`, `router.post('/export', exportUsers)`: no
+  auth middleware in this handler's chain, unlike every other `/admin/*`
+  route in the file, which all call `requireAdmin` first.
+
+### Cryptography
+- 🔐 `src/utils/tokens.js:12`, `generateResetToken()`: builds the
+  password-reset token from `Math.random()`, not a cryptographically
+  secure source, the token is guessable.
+```
 
 ```
 ## Threats (STRIDE)

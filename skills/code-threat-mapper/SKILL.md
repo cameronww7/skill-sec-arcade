@@ -1,6 +1,6 @@
 ---
 name: code-threat-mapper
-description: Analyze a repo or codebase and produce a full threat model, an ASCII architecture diagram, a plain-language walkthrough of what it does, and a STRIDE-driven breakdown of threats mapped to the OWASP Top 10 and the OWASP Cheat Sheet Series. Written like a coach or mentor teaching AppSec concepts, not a scan report. Trigger this whenever the user asks to "threat model this repo/codebase," "map the attack surface," "what are the security risks here," "STRIDE this," "generate a threat model diagram," "draw the architecture and threats," or "walk me through the risks in this code." This is not a SAST/SCA scan and doesn't replace one, it's an architecture-level understanding exercise that produces a reusable artifact.
+description: Analyze a repo or codebase and produce a full threat model, an ASCII architecture diagram, a plain-language walkthrough of what it does, a "worth a second look" checklist of notable authentication, cryptography, and access-control call-outs, and a STRIDE-driven breakdown of threats mapped to the OWASP Top 10 and the OWASP Cheat Sheet Series. Written like a coach or mentor teaching AppSec concepts, not a scan report. Trigger this whenever the user asks to "threat model this repo/codebase," "map the attack surface," "what are the security risks here," "STRIDE this," "generate a threat model diagram," "draw the architecture and threats," "check the auth on this," "any weak crypto in here," or "walk me through the risks in this code." This is not a SAST/SCA scan and doesn't replace one, it's an architecture-level understanding exercise that produces a reusable artifact.
 ---
 
 # Code Threat Mapper
@@ -11,7 +11,7 @@ A SAST or SCA tool finds *instances* of bad patterns: this line has an injectabl
 
 This skill does the second job: read the codebase like a new AppSec engineer would on their first week on a team, build a mental model of what it does and how the pieces talk to each other, then reason about where that model breaks under an adversary's pressure. The output is meant to be *kept*, dropped into a wiki or a PR description, handed to a teammate who's never seen this repo, and still make sense a year from now. It teaches while it reports: terms get defined, reasoning is shown, nothing is asserted without either a citation or an explicit "this is architectural, no single line proves it."
 
-This is also, specifically, the skill built to catch OWASP A06:2025 Insecure Design, the category made of flaws in a system's architecture and workflow rather than in any single line of code: a missing authorization check that was never designed in, a password reset flow with no rate limit, a service that trusts a client-supplied header because nobody drew the trust boundary that would have flagged it. A scanner can't find A06 issues because there's no bad pattern to match, the design itself is the vulnerability. That's exactly the gap this skill closes, see Step 5 for how it gets called out.
+This is also, specifically, the skill built to catch OWASP A06:2025 Insecure Design, the category made of flaws in a system's architecture and workflow rather than in any single line of code: a missing authorization check that was never designed in, a password reset flow with no rate limit, a service that trusts a client-supplied header because nobody drew the trust boundary that would have flagged it. A scanner can't find A06 issues because there's no bad pattern to match, the design itself is the vulnerability. That's exactly the gap this skill closes, see Step 6 for how it gets called out.
 
 ## When to use this
 
@@ -38,7 +38,7 @@ Figure out what you're actually looking at before modeling anything.
 From Step 1's inventory, build:
 
 - **Components**: the app/service itself, its datastores, its external dependencies, anything that runs code (workers, functions, jobs).
-- **Trust boundaries**: every place data crosses from a less-trusted context into a more-trusted one, internet → app, app → database, app → third-party API, unauthenticated → authenticated zone, user tier → admin tier. This is the backbone of the STRIDE pass in Step 4: threats live at these boundaries.
+- **Trust boundaries**: every place data crosses from a less-trusted context into a more-trusted one, internet → app, app → database, app → third-party API, unauthenticated → authenticated zone, user tier → admin tier. This is the backbone of the STRIDE pass in Step 5: threats live at these boundaries.
 - **Data flows**: what moves between components, especially anything carrying user input or sensitive data (credentials, PII, payment data, tokens).
 
 This map is what the ASCII diagram in the final output renders. Keep it to the components and boundaries that actually matter for security reasoning, not a complete infra diagram.
@@ -47,7 +47,22 @@ This map is what the ASCII diagram in the final output renders. Keep it to the c
 
 Before any threat talk, write a plain-language summary of the system: what it's for, who uses it, and its key features. Someone with zero security background and no prior exposure to this codebase should be able to read this section and understand what they're looking at. This grounds everything that follows, a threat only makes sense once the reader knows what's being threatened.
 
-## Step 4: Threat model with STRIDE
+## Step 4: Build the "Worth a Second Look" inventory
+
+Before the deep STRIDE dive, run a fast, targeted scan for specific patterns worth flagging on their own, using what Steps 1-3 already surfaced. This is a checklist, not a narrative, the reader should be able to skim it in under a minute and know exactly what to go verify.
+
+This list doesn't need to avoid overlap with the STRIDE section that follows. An item can appear here as a quick flag and also get a full STRIDE writeup later, when that happens, point back to it ("see Threats (STRIDE) → [component]") instead of repeating the reasoning. Not everything here needs to graduate to a full STRIDE threat either, some things are worth a look without full treatment, e.g. a hardcoded value in a test fixture.
+
+Four categories. Only populate one when something genuinely notable turns up, skip a category, or the whole section, rather than forcing filler entries just to look thorough:
+
+- **Authentication**: for entry points from Step 1, flag anything that looks off, this is not a full per-route inventory. An endpoint that looks like it should require auth but has no visible auth middleware/decorator/guard in its chain; inconsistent auth across near-identical routes (some protected, some not); auth that's only checked client-side; a route whose name or behavior implies privilege (admin, delete, export, internal) with no visible protection.
+- **Cryptography**: weak or broken algorithms (MD5, SHA-1, DES, ECB mode) used anywhere security-relevant, password hashing, token signing, encryption; hardcoded keys, secrets, salts, or IVs in source; a non-cryptographic random source (`Math.random()`, `rand()`) used for anything security-sensitive, tokens, session IDs, reset codes; homegrown crypto instead of a vetted library; disabled or overridden TLS/certificate validation.
+- **Access Control**: an authorization check that's assumed rather than enforced, a role read from a client-supplied field, an admin action gated only by hiding a UI element instead of a server-side check; object-level checks missing where a user-supplied ID fetches or modifies a record with no ownership or tenant check (IDOR-shaped code); authorization logic duplicated inconsistently across handlers instead of centralized.
+- **Other**: an open catch-all for anything else worth a second look that doesn't fit the three buckets above, e.g. dangerous deserialization, `eval`-like dynamic execution of external input, debug or test endpoints and feature flags left enabled, verbose error output that could leak internals.
+
+Each entry gets a `file:line` and function/symbol citation, one to two sentences max, phrased as a nudge to go look rather than a fully reasoned verdict, e.g. "Check this out: `/admin/export` has no auth guard in its handler chain, unlike every other `/admin/*` route in this file." No Likelihood/Impact rating here, that reasoning belongs to Step 8.
+
+## Step 5: Threat model with STRIDE
 
 Walk every component and every trust-boundary crossing identified in Step 2 against STRIDE. Define each category in one clause the first time you use it in the output, don't assume the reader already knows the acronym:
 
@@ -60,7 +75,7 @@ Walk every component and every trust-boundary crossing identified in Step 2 agai
 
 For each applicable threat: name the component or boundary it applies to, cite the specific `file:line` and function/symbol backing it where the code makes the threat concrete, or mark it explicitly as **design-level** when it follows from the architecture rather than a specific line (e.g. "no trust boundary exists between the public API and the internal admin routes" isn't a single-line finding). Don't force all six letters onto every component, only include the ones that genuinely apply, a read-only static file server has a very different STRIDE profile than an auth service.
 
-## Step 5: Map to OWASP Top 10 and the Cheat Sheet Series
+## Step 6: Map to OWASP Top 10 and the Cheat Sheet Series
 
 For threats that are web-application-relevant, tag the matching OWASP Top 10:2025 category and name the specific Cheat Sheet Series sheet(s) that give remediation guidance, using `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md` as the lookup. Don't tag every threat with a category, force-fitting a category onto something that doesn't fit teaches the wrong lesson. Skip this step's tagging for threats that are genuinely outside the Top 10's scope (e.g. a pure CLI tool with no web-facing surface still gets STRIDE, just not OWASP tags).
 
@@ -76,11 +91,11 @@ Give A06 more attention than the other categories in this step. It's the categor
 
 Most A06 findings will be design-level with no single line to cite, that's the expected shape of this category, not a gap in the evidentiary standard. Say so plainly and cite the Threat Modeling Cheat Sheet as the remediation path: A06's own guidance is to build threat modeling into the design process, which is exactly what this report is doing after the fact.
 
-## Step 6: Factor in language-specific attack vectors
+## Step 7: Factor in language-specific attack vectors
 
 Cross-check the languages and frameworks detected in Step 1 against `${CLAUDE_PLUGIN_ROOT}/references/language-attack-vectors.md`. Only surface a vector if the codebase has actual supporting code for it, an import, a sink, a pattern you can cite by file:line. Don't dump the reference table's full contents into the output, that's noise, not signal, and undermines the "evidence-based" standard the rest of the report holds to.
 
-## Step 7: Rate each threat
+## Step 8: Rate each threat
 
 Use a plain Likelihood × Impact matrix, not DREAD, not raw CVSS. Each axis gets three levels, and define what each level means in this codebase's context the first time you use it:
 
@@ -89,7 +104,7 @@ Use a plain Likelihood × Impact matrix, not DREAD, not raw CVSS. Each axis gets
 
 Combine into an overall risk tier: 🔴 High (High/High, High/Medium, or Medium/High), 🟡 Medium (the remaining mixed combinations), 🟢 Low (Low/Low, Low/Medium, Medium/Low). State the combination plainly, e.g. "Likelihood: Medium, Impact: High → 🔴 High risk," don't make the reader infer the tier.
 
-## Step 8: Write the output
+## Step 9: Write the output
 
 ### Voice
 
@@ -97,7 +112,7 @@ This is the opposite emphasis from a terse verdict block, the goal here is under
 
 - Write like a mentor walking a teammate through their own system for the first time. Conversational, contractions are good, but every claim about the code is still backed by a file:line citation or explicitly marked architectural/design-level.
 - Define a term the first time it's used: STRIDE letters, OWASP category names, "trust boundary," "attack surface," anything a working developer without a security background might not know. Don't redefine it every time after that.
-- Be exhaustive. This is meant to be a complete artifact someone keeps, not a quick take, cover every component and boundary from Step 2, don't stop at the first few interesting findings.
+- Be exhaustive. This is meant to be a complete artifact someone keeps, not a quick take, cover every component and boundary from Step 2, don't stop at the first few interesting findings. The one deliberate exception is "Worth a Second Look": keep that section genuinely notable-only, a checklist, not a narrative.
 - Don't lecture past the point of usefulness. Define a term once, clearly, then move on, don't pad the report with security-101 tangents unrelated to this codebase.
 - No unsupported claims. Every threat traces to either a citation or an explicit "design-level" label. If you're genuinely unsure whether something is exploitable, say so and explain what would need to be true to confirm it, don't state it as fact and don't omit it either.
 - Prioritize clearly at the end: the reader should walk away knowing what to fix first without having to re-read the whole report.
@@ -120,6 +135,24 @@ over anything fancy.]
 
 [Plain-language overview: purpose, users, key features. No security
 framing yet, just grounding.]
+
+## Worth a Second Look
+
+[Only the categories with genuinely notable entries, omit the rest.
+If nothing notable turned up anywhere, say so in one line instead of
+dropping the section silently.]
+
+### Authentication
+- 🔑 `path/file.ext:line`, `functionOrSymbolName()`: [what's notable, 1-2 sentences]
+
+### Cryptography
+- 🔐 `path/file.ext:line`, `functionOrSymbolName()`: [what's notable, 1-2 sentences]
+
+### Access Control
+- 🚪 `path/file.ext:line`, `functionOrSymbolName()`: [what's notable, 1-2 sentences]
+
+### Other
+- 🔎 `path/file.ext:line`, `functionOrSymbolName()`: [what's notable, 1-2 sentences]
 
 ## Threats (STRIDE)
 
@@ -153,11 +186,11 @@ STRIDE letters used, OWASP categories used, "trust boundary,"
 anything else introduced in this report.]
 ```
 
-## Step 9: Offer to save
+## Step 10: Offer to save
 
 After producing the report, ask whether the user wants it kept inline in this conversation or written to a markdown file, e.g. `THREAT_MODEL.md` at the repo root, or a path they name. Frame it as making the report reusable, something the team can revisit, diff against next time, or hand to someone new, not just chat scrollback that disappears. If they want it saved, write the exact same content to the file, don't summarize or trim it for the file version.
 
 ## Reference material
 
-- `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md`: OWASP Top 10:2025 categories mapped to relevant Cheat Sheet Series sheets, used in Step 5.
-- `${CLAUDE_PLUGIN_ROOT}/references/language-attack-vectors.md`: language/runtime to common attack vector lookup, used in Step 6.
+- `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md`: OWASP Top 10:2025 categories mapped to relevant Cheat Sheet Series sheets, used in Step 6.
+- `${CLAUDE_PLUGIN_ROOT}/references/language-attack-vectors.md`: language/runtime to common attack vector lookup, used in Step 7.
