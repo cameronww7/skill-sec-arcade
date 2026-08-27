@@ -3,7 +3,7 @@
 A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for AppSec and security engineering. Insert coin, learn a skill, boss fight the vuln.
 
 ![Claude Code Plugin](https://img.shields.io/badge/claude--code-plugin-5A67D8)
-![Skills](https://img.shields.io/badge/skills-2-brightgreen)
+![Skills](https://img.shields.io/badge/skills-3-brightgreen)
 ![Focus](https://img.shields.io/badge/focus-AppSec-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
@@ -22,6 +22,7 @@ No restart, no manual registration. Every skill under `skills/` gets picked up a
 |---|---|---|
 | [`security-detection-second-triage-reviewer`](skills/security-detection-second-triage-reviewer) | Independently investigates a pasted scanner finding (SAST/SCA/Secrets/IaC/DAST) against the real repo and returns a true/false-positive verdict with cited evidence, instead of trusting the tool's severity rating. | You paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?" |
 | [`security-detection-false-positive-governor`](skills/security-detection-false-positive-governor) | The inverse: takes a finding someone (human or AI) already marked False Positive and independently audits that verdict, trying to break the justification before agreeing to close it out. | An FP/suppression writeup exists and you want a skeptical second opinion before it's trusted. |
+| [`code-threat-mapper`](skills/code-threat-mapper) | Reads a repo like an AppSec engineer on their first week: maps the architecture, draws an ASCII diagram, and threat models it with STRIDE, mapped to the OWASP Top 10 and Cheat Sheet Series. Teaching tone, not a scan report, built to be kept and reused. | You want a threat model, an attack-surface map, or a security-focused walkthrough of a codebase, not a validation of one specific finding. |
 
 More cabinets get added as they're built — see [Adding a new skill](#adding-a-new-skill) below.
 
@@ -45,9 +46,9 @@ skill-sec-arcade/
 ```
 
 - **`.claude-plugin/`** — the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
-- **`skills/`** — one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically — no slash command needed. Currently two cabinets installed: [`security-detection-second-triage-reviewer`](skills/security-detection-second-triage-reviewer) and [`security-detection-false-positive-governor`](skills/security-detection-false-positive-governor) (see table above).
+- **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently three cabinets installed: [`security-detection-second-triage-reviewer`](skills/security-detection-second-triage-reviewer), [`security-detection-false-positive-governor`](skills/security-detection-false-positive-governor), and [`code-threat-mapper`](skills/code-threat-mapper) (see table above).
 - **`scripts/`** — helper scripts a `SKILL.md` can shell out to. Empty until a skill needs one.
-- **`references/`** — shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Empty until a skill needs one.
+- **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `code-threat-mapper`'s OWASP Top 10 and language attack-vector lookups.
 - **`templates/`** — `SKILL.md.template`, the starting point for scaffolding a new skill.
 
 ## Adding a new skill
