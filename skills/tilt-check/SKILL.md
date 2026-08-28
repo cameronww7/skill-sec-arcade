@@ -1,9 +1,9 @@
 ---
-name: security-detection-false-positive-governor
+name: tilt-check
 description: Independently re-investigate a finding that has already been marked a False Positive, by an AI triage agent, another analyst, or an automated tool, to check whether that verdict actually holds up. Treats the FP call and its justification as an unverified claim, not fact, and actively hunts for a reason the finding is still exploitable before agreeing to close it out. Trigger this whenever the user pastes a False Positive verdict, a suppression justification, a "not applicable" or "won't fix" ticket comment, asks to double-check, audit, sanity-check, or second-guess an AI triage result, or asks "are we sure this is actually a false positive?"
 ---
 
-# Security Detection False Positive Governor
+# Tilt Check
 
 ## Why this skill exists
 
@@ -11,7 +11,7 @@ An agent that triages security findings can be wrong in exactly the way a human 
 
 This skill is the governor on that process. It does not re-run the original triage from scratch and does not trust the original triage's conclusion, evidence, or tone of confidence. It takes the FP verdict as a claim someone is asking you to sign off on, and its job is to try to break that claim before agreeing with it. If a genuinely thorough, skeptical, independent look still lands on False Positive, that agreement is worth something. If it doesn't, that's the entire point of running this.
 
-This is the inverse of [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer): that skill takes a scanner's raw verdict and checks whether it's real. This skill takes a human's or an agent's "it's not real" verdict and checks whether *that's* real.
+This is the inverse of [`player-two-verdict`](../player-two-verdict): that skill takes a scanner's raw verdict and checks whether it's real. This skill takes a human's or an agent's "it's not real" verdict and checks whether *that's* real.
 
 ## When to use this
 
@@ -23,7 +23,7 @@ If the user instead pastes a raw, untriaged scanner finding with no verdict atta
 
 ## Step 1: Isolate the review
 
-This skill's entire value depends on reaching its own conclusion, not on confirming one that's already sitting in the conversation. If the original FP verdict was produced earlier in this same session (for example by [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer) running right before this), or if the user has been discussing the finding with you before pasting the verdict, your own read of it is already anchored to that reasoning. Running the "independent" audit in that same context isn't independent, it's the same judgment re-reading its own homework and agreeing with itself.
+This skill's entire value depends on reaching its own conclusion, not on confirming one that's already sitting in the conversation. If the original FP verdict was produced earlier in this same session (for example by [`player-two-verdict`](../player-two-verdict) running right before this), or if the user has been discussing the finding with you before pasting the verdict, your own read of it is already anchored to that reasoning. Running the "independent" audit in that same context isn't independent, it's the same judgment re-reading its own homework and agreeing with itself.
 
 Do not perform Steps 2-6 yourself in this conversation. Before anything else, delegate the entire audit to a fresh subagent, one that starts with no memory of this conversation, not a fork or continuation of it. Give that subagent nothing but:
 

@@ -1,4 +1,4 @@
-# 🕵️ Security Detection False Positive Governor
+# 🚨 Tilt Check
 
 *A cabinet in the [sec-arcade](../../): insert coin when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*
 
@@ -7,7 +7,7 @@
 ![Focus](https://img.shields.io/badge/focus-FP_governance-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
-A Claude Code skill that independently re-investigates a finding that's already been marked a False Positive, to check whether that verdict actually holds up. It's the inverse of [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer): where that skill checks whether a scanner's "this is real" verdict is real, this skill checks whether a triage's "this isn't real" verdict is real.
+A Claude Code skill that independently re-investigates a finding that's already been marked a False Positive, to check whether that verdict actually holds up. It's the inverse of [`player-two-verdict`](../player-two-verdict): where that skill checks whether a scanner's "this is real" verdict is real, this skill checks whether a triage's "this isn't real" verdict is real.
 
 ## Overview
 
@@ -134,11 +134,11 @@ Copy this folder into your personal or project skills directory:
 ```bash
 # personal, applies in every project
 git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
-cp -r /tmp/sec-arcade/skills/security-detection-false-positive-governor ~/.claude/skills/
+cp -r /tmp/sec-arcade/skills/tilt-check ~/.claude/skills/
 
 # project-level, this repo only
 mkdir -p .claude/skills
-cp -r /tmp/sec-arcade/skills/security-detection-false-positive-governor .claude/skills/
+cp -r /tmp/sec-arcade/skills/tilt-check .claude/skills/
 ```
 
 Claude Code picks up skills from either location automatically, no restart or manual registration required.
@@ -210,7 +210,7 @@ Action: Upheld, suppress as originally justified. No further work.
 
 ## What this skill does and doesn't replace
 
-- It doesn't re-run first-pass triage. If you paste a raw, unverdicted scanner finding, that's [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer)'s job.
+- It doesn't re-run first-pass triage. If you paste a raw, unverdicted scanner finding, that's [`player-two-verdict`](../player-two-verdict)'s job.
 - It doesn't confirm True Positive verdicts. It exists specifically to pressure-test dismissals; a finding already marked True Positive doesn't need this skill.
 - It doesn't defer to "insufficient evidence, so the FP stands." Insufficient evidence means the suppression isn't earned yet, the output routes those to further review instead of silently upholding them.
 
@@ -226,7 +226,7 @@ Findings sharing one suppression rationale (same reasoning applied across severa
 
 ## Next cabinet
 
-[`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer) is the inverse of this skill: it's the one producing the first-pass FP verdicts this skill exists to double-check.
+[`player-two-verdict`](../player-two-verdict) is the inverse of this skill: it's the one producing the first-pass FP verdicts this skill exists to double-check.
 
 ## License
 

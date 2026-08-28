@@ -3,7 +3,7 @@
 A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for AppSec and security engineering. Insert coin, learn a skill, boss fight the vuln.
 
 ![Claude Code Plugin](https://img.shields.io/badge/claude--code-plugin-5A67D8)
-![Skills](https://img.shields.io/badge/skills-3-brightgreen)
+![Skills](https://img.shields.io/badge/skills-4-brightgreen)
 ![Focus](https://img.shields.io/badge/focus-AppSec-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
@@ -20,9 +20,10 @@ No restart, no manual registration. Every skill under `skills/` gets picked up a
 
 | Cabinet | What it does | Insert coin when... |
 |---|---|---|
-| [`security-detection-second-triage-reviewer`](skills/security-detection-second-triage-reviewer) | Independently investigates a pasted scanner finding (SAST/SCA/Secrets/IaC/DAST) against the real repo and returns a true/false-positive verdict with cited evidence, instead of trusting the tool's severity rating. | You paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?" |
-| [`security-detection-false-positive-governor`](skills/security-detection-false-positive-governor) | The inverse: takes a finding someone (human or AI) already marked False Positive and independently audits that verdict, trying to break the justification before agreeing to close it out. | An FP/suppression writeup exists and you want a skeptical second opinion before it's trusted. |
-| [`code-threat-mapper`](skills/code-threat-mapper) | Reads a repo like an AppSec engineer on their first week: maps the architecture, draws an ASCII diagram, and threat models it with STRIDE, mapped to the OWASP Top 10 and Cheat Sheet Series. Teaching tone, not a scan report, built to be kept and reused. | You want a threat model, an attack-surface map, or a security-focused walkthrough of a codebase, not a validation of one specific finding. |
+| [`player-two-verdict`](skills/player-two-verdict) | Independently investigates a pasted scanner finding (SAST/SCA/Secrets/IaC/DAST) against the real repo and returns a true/false-positive verdict with cited evidence, instead of trusting the tool's severity rating. | You paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?" |
+| [`tilt-check`](skills/tilt-check) | The inverse: takes a finding someone (human or AI) already marked False Positive and independently audits that verdict, trying to break the justification before agreeing to close it out. | An FP/suppression writeup exists and you want a skeptical second opinion before it's trusted. |
+| [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map) | Reads a repo like an AppSec engineer on their first week: maps the architecture, draws an ASCII diagram, and threat models it with STRIDE, mapped to the OWASP Top 10 and Cheat Sheet Series. Teaching tone, not a scan report, built to be kept and reused. | You want a threat model, an attack-surface map, or a security-focused walkthrough of a codebase, not a validation of one specific finding. |
+| [`cartridge-scanner`](skills/cartridge-scanner) | Inventories a repo before any deep scanning starts: language/LOC breakdown (via `scc`), package manager and dependency counts, private/internal registry detection, IaC and container inventory, ending in a tailored, tool-agnostic rundown of what scanning capability the repo needs. | You want a size/dependency/IaC/container inventory, or you're asking "what security tools do I need for this repo." |
 
 More cabinets get added as they're built, see [Adding a new skill](#adding-a-new-skill) below.
 
@@ -31,24 +32,39 @@ More cabinets get added as they're built, see [Adding a new skill](#adding-a-new
 ```
 skill-sec-arcade/
 ├── .claude-plugin/
-│   ├── plugin.json        ── plugin manifest (name, description, author)
-│   └── marketplace.json   ── catalog entry pointing "sec-arcade" -> ./
+│   ├── plugin.json                      ── plugin manifest (name, description, author)
+│   └── marketplace.json                 ── catalog entry pointing "sec-arcade" -> ./
 ├── skills/
-│   └── <skill-name>/
-│       ├── SKILL.md       ── auto-discovered by Claude Code, one per skill
-│       └── README.md      ── human-facing docs for that skill (optional)
-├── scripts/                ── helper scripts a SKILL.md can shell out to
-├── references/             ── shared cheatsheets/checklists skills can point at
+│   ├── cartridge-scanner/               ── inventories a repo: languages, LOC, deps, IaC, containers
+│   │   ├── SKILL.md
+│   │   └── README.md
+│   ├── dungeon-crawl-threat-map/        ── architecture diagram + STRIDE threat model
+│   │   ├── SKILL.md
+│   │   └── README.md
+│   ├── player-two-verdict/              ── true/false-positive verdict on one pasted finding
+│   │   ├── SKILL.md
+│   │   └── README.md
+│   └── tilt-check/                      ── skeptical re-audit of an existing False Positive verdict
+│       ├── SKILL.md
+│       └── README.md
+├── scripts/
+│   └── cartridge_scan.py                ── repo inventory helper, used by cartridge-scanner
+├── references/
+│   ├── language-attack-vectors.md       ── language/runtime -> common attack vector lookup
+│   ├── owasp-top10-cheatsheet-map.md    ── OWASP Top 10:2025 -> Cheat Sheet Series lookup
+│   └── security-scan-capability-map.md  ── ecosystem/file-type -> scanning capability lookup
 ├── templates/
-│   └── SKILL.md.template  ── copy this to scaffold a new skill
+│   └── SKILL.md.template                ── copy this to scaffold a new skill
 ├── LICENSE
 └── README.md
 ```
 
+New skill added? Update this tree and the table above.
+
 - **`.claude-plugin/`**: the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
-- **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently three cabinets installed: [`security-detection-second-triage-reviewer`](skills/security-detection-second-triage-reviewer), [`security-detection-false-positive-governor`](skills/security-detection-false-positive-governor), and [`code-threat-mapper`](skills/code-threat-mapper) (see table above).
-- **`scripts/`**: helper scripts a `SKILL.md` can shell out to. Empty until a skill needs one.
-- **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `code-threat-mapper`'s OWASP Top 10 and language attack-vector lookups.
+- **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently four cabinets installed: [`player-two-verdict`](skills/player-two-verdict), [`tilt-check`](skills/tilt-check), [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map), and [`cartridge-scanner`](skills/cartridge-scanner) (see table above).
+- **`scripts/`**: helper scripts a `SKILL.md` can shell out to. Currently holds `cartridge-scanner`'s repo inventory script.
+- **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `dungeon-crawl-threat-map`'s OWASP Top 10 and language attack-vector lookups, and `cartridge-scanner`'s security scan capability map.
 - **`templates/`**: `SKILL.md.template`, the starting point for scaffolding a new skill.
 
 ## Adding a new skill

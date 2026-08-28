@@ -1,4 +1,4 @@
-# 🗺️ Code Threat Mapper
+# 🗺️ Dungeon Crawl: Threat Map
 
 *A cabinet in the [sec-arcade](../../): insert coin when you want to understand a codebase's shape, not just scan its lines.*
 
@@ -116,11 +116,11 @@ Copy this folder into your personal or project skills directory:
 ```bash
 # personal, applies in every project
 git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
-cp -r /tmp/sec-arcade/skills/code-threat-mapper ~/.claude/skills/
+cp -r /tmp/sec-arcade/skills/dungeon-crawl-threat-map ~/.claude/skills/
 
 # project-level, this repo only
 mkdir -p .claude/skills
-cp -r /tmp/sec-arcade/skills/code-threat-mapper .claude/skills/
+cp -r /tmp/sec-arcade/skills/dungeon-crawl-threat-map .claude/skills/
 ```
 
 Note: if installing standalone (not via the whole plugin), also copy `references/owasp-top10-cheatsheet-map.md` and `references/language-attack-vectors.md` from the arcade repo alongside it, the skill points at them by relative path.
@@ -177,7 +177,7 @@ For a large monorepo, the skill will ask you to scope to a specific service or d
 
 ## Limitations
 
-- Not a SAST/SCA replacement. It doesn't enumerate every instance of a pattern the way a scanner does, it reasons about architecture-level risk. Run an actual scanner (and, for individual findings, [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer)) alongside this, not instead of it.
+- Not a SAST/SCA replacement. It doesn't enumerate every instance of a pattern the way a scanner does, it reasons about architecture-level risk. Run an actual scanner (and, for individual findings, [`player-two-verdict`](../player-two-verdict)) alongside this, not instead of it.
 - A point-in-time snapshot. It reflects the code as it stands when run, not runtime behavior, deployed configuration, or infrastructure the repo doesn't describe.
 - Depth scales with repo size. For a very large or unfamiliar codebase, scope it to one service at a time for a report that's actually useful rather than too dense to act on.
 

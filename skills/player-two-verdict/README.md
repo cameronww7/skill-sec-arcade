@@ -1,4 +1,4 @@
-# 🔍 Security Detection Second Triage Reviewer
+# 2️⃣ Player Two Verdict
 
 *A cabinet in the [sec-arcade](../../): insert coin when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
 
@@ -110,11 +110,11 @@ Copy this folder into your personal or project skills directory:
 ```bash
 # personal, applies in every project
 git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
-cp -r /tmp/sec-arcade/skills/security-detection-second-triage-reviewer ~/.claude/skills/
+cp -r /tmp/sec-arcade/skills/player-two-verdict ~/.claude/skills/
 
 # project-level, this repo only
 mkdir -p .claude/skills
-cp -r /tmp/sec-arcade/skills/security-detection-second-triage-reviewer .claude/skills/
+cp -r /tmp/sec-arcade/skills/player-two-verdict .claude/skills/
 ```
 
 Claude Code picks up skills from either location automatically, no restart or manual registration required.
@@ -205,7 +205,7 @@ Findings sharing one root cause (same CWE, rule, or package across several locat
 
 ## Next cabinet
 
-[`security-detection-false-positive-governor`](../security-detection-false-positive-governor) is the inverse of this skill: once a finding here comes back False Positive, that skill independently re-audits the verdict before it gets trusted.
+[`tilt-check`](../tilt-check) is the inverse of this skill: once a finding here comes back False Positive, that skill independently re-audits the verdict before it gets trusted.
 
 ## License
 

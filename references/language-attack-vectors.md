@@ -1,6 +1,6 @@
 # Language / runtime → common attack vectors
 
-Quick lookup for `code-threat-mapper` Step 6. Only surface a vector here if the codebase actually has supporting code for it (an import, a pattern, a config). This is a list to check against, not a list to dump wholesale into a report.
+Quick lookup for `dungeon-crawl-threat-map` Step 6. Only surface a vector here if the codebase actually has supporting code for it (an import, a pattern, a config). This is a list to check against, not a list to dump wholesale into a report.
 
 | Language / runtime | Common attack vectors |
 |---|---|

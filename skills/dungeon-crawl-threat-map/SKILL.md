@@ -1,9 +1,9 @@
 ---
-name: code-threat-mapper
+name: dungeon-crawl-threat-map
 description: Analyze a repo or codebase and produce a full threat model, an ASCII architecture diagram, a plain-language walkthrough of what it does, a "worth a second look" checklist of notable authentication, cryptography, and access-control call-outs, and a STRIDE-driven breakdown of threats mapped to the OWASP Top 10 and the OWASP Cheat Sheet Series. Written like a coach or mentor teaching AppSec concepts, not a scan report. Trigger this whenever the user asks to "threat model this repo/codebase," "map the attack surface," "what are the security risks here," "STRIDE this," "generate a threat model diagram," "draw the architecture and threats," "check the auth on this," "any weak crypto in here," or "walk me through the risks in this code." This is not a SAST/SCA scan and doesn't replace one, it's an architecture-level understanding exercise that produces a reusable artifact.
 ---
 
-# Code Threat Mapper
+# Dungeon Crawl: Threat Map
 
 ## Why this skill exists
 
@@ -21,7 +21,7 @@ This is also, specifically, the skill built to catch OWASP A06:2025 Insecure Des
 - The user is onboarding to a new codebase and wants a security-focused orientation.
 - The user wants something to hand to a team, auditor, or new hire that explains both the system and its risks.
 
-If the user instead pastes a single scanner finding and wants to know if it's exploitable, that's [`security-detection-second-triage-reviewer`](../security-detection-second-triage-reviewer)'s job, not this one. This skill builds the big picture; that one verifies a specific claim.
+If the user instead pastes a single scanner finding and wants to know if it's exploitable, that's [`player-two-verdict`](../player-two-verdict)'s job, not this one. This skill builds the big picture; that one verifies a specific claim.
 
 ## Step 1: Recon the codebase
 

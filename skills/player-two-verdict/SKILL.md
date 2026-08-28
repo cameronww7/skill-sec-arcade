@@ -1,9 +1,9 @@
 ---
-name: security-detection-second-triage-reviewer
+name: player-two-verdict
 description: Independently investigate a pasted security scanner finding (SAST, SCA, Secrets, IaC, or DAST) to determine if it's a true or false positive, using actual repo access rather than trusting the tool's verdict. Trigger this whenever the user pastes a security finding, vulnerability report, CVE, CWE, scanner output, or asks to triage, validate, review, or challenge a security finding. Also trigger on requests like "is this a real vulnerability" or "help me figure out if I can suppress this finding."
 ---
 
-# Security Detection Second Triage Reviewer
+# Player Two Verdict
 
 ## Why this skill exists
 
