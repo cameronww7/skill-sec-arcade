@@ -1,3 +1,21 @@
+```
+ _____  _           __     ________ _____    _________          ______  
+|  __ \| |        /\\ \   / /  ____|  __ \  |__   __\ \        / / __ \ 
+| |__) | |       /  \\ \_/ /| |__  | |__) |    | |   \ \  /\  / / |  | |
+|  ___/| |      / /\ \\   / |  __| |  _  /     | |    \ \/  \/ /| |  | |
+| |    | |____ / ____ \| |  | |____| | \ \     | |     \  /\  / | |__| |
+|_|    |______/_/    \_\_|  |______|_|  \_\    |_|      \/  \/   \____/ 
+
+__      ________ _____  _____ _____ _____ _______ 
+\ \    / /  ____|  __ \|  __ \_   _/ ____|__   __|
+ \ \  / /| |__  | |__) | |  | || || |       | |   
+  \ \/ / |  __| |  _  /| |  | || || |       | |   
+   \  /  | |____| | \ \| |__| || || |____   | |   
+    \/   |______|_|  \_\_____/_____\_____|  |_|   
+```
+
+*Accent: Player Two Blue. Classic arcade convention, Player One is red, Player Two checks the call.*
+
 # 2️⃣ Player Two Verdict
 
 *A cabinet in the [sec-arcade](../../): insert coin when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*

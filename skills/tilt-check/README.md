@@ -1,3 +1,13 @@
+```
+ _____ ___ _   _____    ____ _   _ _____ ____ _  __
+|_   _|_ _| | |_   _|  / ___| | | | ____/ ___| |/ /
+  | |  | || |   | |   | |   | |_| |  _|| |   | ' / 
+  | |  | || |___| |   | |___|  _  | |__| |___| . \ 
+  |_| |___|_____|_|    \____|_| |_|_____\____|_|\_\
+```
+
+*Accent: Tilt Amber. The warning light that flashes when someone shakes the cabinet.*
+
 # 🚨 Tilt Check
 
 *A cabinet in the [sec-arcade](../../): insert coin when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*

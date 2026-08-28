@@ -1,3 +1,19 @@
+```
+   _________    ____  __________  ________  ____________
+  / ____/   |  / __ \/_  __/ __ \/  _/ __ \/ ____/ ____/
+ / /   / /| | / /_/ / / / / /_/ // // / / / / __/ __/   
+/ /___/ ___ |/ _, _/ / / / _, _// // /_/ / /_/ / /___   
+\____/_/  |_/_/ |_| /_/ /_/ |_/___/_____/\____/_____/   
+
+   _____ _________    _   ___   ____________ 
+  / ___// ____/   |  / | / / | / / ____/ __ \
+  \__ \/ /   / /| | /  |/ /  |/ / __/ / /_/ /
+ ___/ / /___/ ___ |/ /|  / /|  / /___/ _, _/ 
+/____/\____/_/  |_/_/ |_/_/ |_/_____/_/ |_|  
+```
+
+*Accent: Phosphor Green. The color of a CRT scan line sweeping every file in the repo.*
+
 # 🕹️ Cartridge Scanner
 
 *A cabinet in the [sec-arcade](../../): insert coin when you want a language/dependency/IaC/container inventory of a repo, before any deep scanning starts.*

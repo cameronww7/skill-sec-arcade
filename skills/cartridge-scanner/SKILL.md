@@ -3,6 +3,22 @@ name: cartridge-scanner
 description: Inventory a repo from an AppSec recon perspective before any deep scanning starts, language and lines-of-code breakdown (via scc), package manager and dependency inventory (first-party vs. third-party surface), private/internal registry detection, Infrastructure-as-Code files, and containers. Ends in a tailored, tool-agnostic rundown of what security scanning capability the repo actually needs. Trigger this whenever the user asks to "scan this repo," "inventory this codebase," "what languages/frameworks are in here," "what security tools should I install for this," "how big is this codebase," "what package managers does this repo use," "audit the dependencies," or asks for an IaC/container inventory. This is a recon and inventory pass, not a vulnerability scan and not a threat model.
 ---
 
+```
+   _________    ____  __________  ________  ____________
+  / ____/   |  / __ \/_  __/ __ \/  _/ __ \/ ____/ ____/
+ / /   / /| | / /_/ / / / / /_/ // // / / / / __/ __/   
+/ /___/ ___ |/ _, _/ / / / _, _// // /_/ / /_/ / /___   
+\____/_/  |_/_/ |_| /_/ /_/ |_/___/_____/\____/_____/   
+
+   _____ _________    _   ___   ____________ 
+  / ___// ____/   |  / | / / | / / ____/ __ \
+  \__ \/ /   / /| | /  |/ /  |/ / __/ / /_/ /
+ ___/ / /___/ ___ |/ /|  / /|  / /___/ _, _/ 
+/____/\____/_/  |_/_/ |_/_/ |_/_____/_/ |_|  
+```
+
+*Accent: Phosphor Green. The color of a CRT scan line sweeping every file in the repo.*
+
 # Cartridge Scanner
 
 ## Why this skill exists

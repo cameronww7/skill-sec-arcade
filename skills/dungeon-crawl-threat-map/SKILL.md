@@ -3,6 +3,24 @@ name: dungeon-crawl-threat-map
 description: Analyze a repo or codebase and produce a full threat model, an ASCII architecture diagram, a plain-language walkthrough of what it does, a "worth a second look" checklist of notable authentication, cryptography, and access-control call-outs, and a STRIDE-driven breakdown of threats mapped to the OWASP Top 10 and the OWASP Cheat Sheet Series. Written like a coach or mentor teaching AppSec concepts, not a scan report. Trigger this whenever the user asks to "threat model this repo/codebase," "map the attack surface," "what are the security risks here," "STRIDE this," "generate a threat model diagram," "draw the architecture and threats," "check the auth on this," "any weak crypto in here," or "walk me through the risks in this code." This is not a SAST/SCA scan and doesn't replace one, it's an architecture-level understanding exercise that produces a reusable artifact.
 ---
 
+```
+______ _   _ _   _ _____  _____ _____ _   _   _____ ______  ___  _    _ _     
+|  _  \ | | | \ | |  __ \|  ___|  _  | \ | | /  __ \| ___ \/ _ \| |  | | |    
+| | | | | | |  \| | |  \/| |__ | | | |  \| | | /  \/| |_/ / /_\ \ |  | | |    
+| | | | | | | . ` | | __ |  __|| | | | . ` | | |    |    /|  _  | |/\| | |    
+| |/ /| |_| | |\  | |_\ \| |___\ \_/ / |\  | | \__/\| |\ \| | | \  /\  / |____
+|___/  \___/\_| \_/\____/\____/ \___/\_| \_/  \____/\_| \_\_| |_/\/  \/\_____/
+
+ _____ _   _ ______ _____  ___ _____  ___  ___  ___  ______ 
+|_   _| | | || ___ \  ___|/ _ \_   _| |  \/  | / _ \ | ___ \
+  | | | |_| || |_/ / |__ / /_\ \| |   | .  . |/ /_\ \| |_/ /
+  | | |  _  ||    /|  __||  _  || |   | |\/| ||  _  ||  __/ 
+  | | | | | || |\ \| |___| | | || |   | |  | || | | || |    
+  \_/ \_| |_/\_| \_\____/\_| |_/\_/   \_|  |_/\_| |_/\_|    
+```
+
+*Accent: Dungeon Violet. Deep purple, the color of an unlit passage on the map screen.*
+
 # Dungeon Crawl: Threat Map
 
 ## Why this skill exists
