@@ -9,6 +9,10 @@ Dockerfiles/compose files and common IaC file types.
 
 Prints one JSON object to stdout. No prose, no markdown: interpretation
 is the calling skill's job, not this script's.
+
+`walk`, `find_files`, `read_text`, `read_json`, and `EXCLUDE_DIRS` are
+also imported directly by dead_weight_scan.py, keep their names and
+signatures stable.
 """
 
 import json
@@ -18,6 +22,9 @@ import subprocess
 import sys
 from urllib.parse import urlparse
 
+# Directories that are never first-party code: dependency caches, build
+# output, and VCS metadata. Pruned from every walk below, both for `scc`'s
+# fallback LOC count and for manifest/source-file discovery.
 EXCLUDE_DIRS = {
     ".git", "node_modules", "vendor", ".venv", "venv", "env",
     "site-packages", "dist", "build", "target", ".tox",
@@ -25,6 +32,9 @@ EXCLUDE_DIRS = {
     ".serverless",
 }
 
+# Small, deliberately partial extension map used only when `scc` isn't
+# installed. `scc` itself recognizes far more languages; this fallback
+# exists to keep the report non-empty, not to replace it.
 FALLBACK_EXT_LANG = {
     ".py": "Python", ".js": "JavaScript", ".jsx": "JavaScript",
     ".ts": "TypeScript", ".tsx": "TypeScript", ".go": "Go",
@@ -32,10 +42,13 @@ FALLBACK_EXT_LANG = {
     ".rs": "Rust", ".cs": "C#", ".c": "C", ".h": "C", ".cpp": "C++",
     ".hpp": "C++", ".swift": "Swift", ".dart": "Dart",
     ".sh": "Shell", ".yaml": "YAML", ".yml": "YAML", ".tf": "Terraform",
-    ".sql": "SQL", ".rb": "Ruby", ".scala": "Scala", ".m": "Objective-C",
+    ".sql": "SQL", ".scala": "Scala", ".m": "Objective-C",
     ".html": "HTML", ".css": "CSS", ".scss": "SCSS",
 }
 
+# The public default registry host(s) per ecosystem. Any manifest/config
+# pointing somewhere else is flagged as a private/internal registry, see
+# add_if_private() below.
 DEFAULT_REGISTRY_HOSTS = {
     "npm": {"registry.npmjs.org"},
     "pip": {"pypi.org", "files.pythonhosted.org"},
@@ -48,6 +61,8 @@ DEFAULT_REGISTRY_HOSTS = {
 
 
 def read_text(path):
+    """Reads a file as UTF-8, tolerating decode errors. Returns "" on any
+    failure (missing file, permission error, etc.) instead of raising."""
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             return f.read()
@@ -56,6 +71,8 @@ def read_text(path):
 
 
 def read_json(path):
+    """Reads and parses a file as JSON. Returns None if it's missing,
+    unreadable, or not valid JSON, never raises."""
     try:
         return json.loads(read_text(path))
     except (ValueError, TypeError):
@@ -63,25 +80,34 @@ def read_json(path):
 
 
 def walk(root):
+    """Drop-in replacement for os.walk(root) that prunes EXCLUDE_DIRS from
+    dirnames in place, so nothing under them is ever visited or yielded."""
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
         yield dirpath, dirnames, filenames
 
 
 def find_files(root, names=None, suffixes=None):
+    """Finds every file under root (via walk(), so EXCLUDE_DIRS is already
+    pruned) whose filename is an exact match in `names` or ends with one
+    of `suffixes`. Returns a plain list of full paths, unsorted."""
     names = set(names or [])
     suffixes = tuple(suffixes or ())
     hits = []
     for dirpath, _dirnames, filenames in walk(root):
-        for fn in filenames:
-            if fn in names or (suffixes and fn.endswith(suffixes)):
-                hits.append(os.path.join(dirpath, fn))
+        for filename in filenames:
+            if filename in names or (suffixes and filename.endswith(suffixes)):
+                hits.append(os.path.join(dirpath, filename))
     return hits
 
 
 # --- scc / fallback LOC -----------------------------------------------
 
 def run_scc(root):
+    """Shells out to the `scc` CLI for language/LOC stats. Returns a list
+    of per-language dicts, or None if `scc` isn't installed, times out, or
+    exits non-zero, the caller falls back to fallback_loc_scan() in that
+    case."""
     try:
         proc = subprocess.run(
             ["scc", "--format", "json", root],
@@ -92,11 +118,12 @@ def run_scc(root):
     if proc.returncode != 0:
         return None
     try:
-        raw = json.loads(proc.stdout)
+        raw_entries = json.loads(proc.stdout)
     except ValueError:
         return None
     languages = []
-    for entry in raw:
+    for entry in raw_entries:
+        # scc's JSON keys are PascalCase; normalize to our snake_case schema.
         languages.append({
             "name": entry.get("Name"),
             "files": entry.get("Count", 0),
@@ -110,430 +137,506 @@ def run_scc(root):
 
 
 def fallback_loc_scan(root):
-    totals = {}
+    """Rough manual LOC count used only when `scc` isn't available: files
+    and total line count per language in FALLBACK_EXT_LANG. No
+    comment/blank/complexity split, that data needs a real tokenizer."""
+    languages_by_name = {}
     for dirpath, _dirnames, filenames in walk(root):
-        for fn in filenames:
-            ext = os.path.splitext(fn)[1].lower()
-            lang = FALLBACK_EXT_LANG.get(ext)
-            if not lang:
+        for filename in filenames:
+            ext = os.path.splitext(filename)[1].lower()
+            language = FALLBACK_EXT_LANG.get(ext)
+            if not language:
                 continue
-            path = os.path.join(dirpath, fn)
+            path = os.path.join(dirpath, filename)
             text = read_text(path)
             if not text and os.path.getsize(path) > 0:
                 continue  # unreadable/binary
-            entry = totals.setdefault(lang, {"name": lang, "files": 0, "lines": 0,
-                                              "code": 0, "comment": 0, "blank": 0,
-                                              "complexity": 0})
+            entry = languages_by_name.setdefault(language, {
+                "name": language, "files": 0, "lines": 0,
+                "code": 0, "comment": 0, "blank": 0, "complexity": 0,
+            })
             entry["files"] += 1
             entry["lines"] += text.count("\n") + (1 if text and not text.endswith("\n") else 0)
-    return list(totals.values())
+    return list(languages_by_name.values())
 
 
 def totals_of(languages):
+    """Sums the files/lines/code/comment/blank fields across every
+    language entry (from run_scc() or fallback_loc_scan()) into one dict."""
     totals = {"files": 0, "lines": 0, "code": 0, "comment": 0, "blank": 0}
-    for lang in languages:
+    for language in languages:
         for key in totals:
-            totals[key] += lang.get(key, 0)
+            totals[key] += language.get(key, 0)
     return totals
 
 
 # --- generic helpers for manifest/lockfile parsing ---------------------
 
 def toml_section_lines(text, header):
+    """Returns the raw lines belonging to a `[header]` TOML table, up to
+    (not including) the next `[...]` table header. Not a real TOML parser,
+    just enough to hand a table's body to count_key_value_lines()."""
     lines = text.splitlines()
-    out = []
+    section_lines = []
     in_section = False
     for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("["):
-            in_section = stripped == f"[{header}]"
+        stripped_line = line.strip()
+        if stripped_line.startswith("["):
+            in_section = stripped_line == f"[{header}]"
             continue
         if in_section:
-            out.append(line)
-    return out
+            section_lines.append(line)
+    return section_lines
 
 
 def count_key_value_lines(lines, exclude_keys=()):
+    """Counts `key = value` lines (as produced by toml_section_lines()),
+    skipping blanks, comments, and any key named in exclude_keys."""
     count = 0
     for line in lines:
-        s = line.strip()
-        if not s or s.startswith("#"):
+        stripped_line = line.strip()
+        if not stripped_line or stripped_line.startswith("#"):
             continue
-        m = re.match(r'^["\']?([\w.\-/@]+)["\']?\s*=', s)
-        if m and m.group(1) not in exclude_keys:
+        match = re.match(r'^["\']?([\w.\-/@]+)["\']?\s*=', stripped_line)
+        if match and match.group(1) not in exclude_keys:
             count += 1
     return count
 
 
 def host_of(url):
+    """Extracts the hostname from a URL string. Returns None for anything
+    unparseable rather than raising."""
     try:
         return urlparse(url).hostname
     except ValueError:
         return None
 
 
-def add_if_private(results, ecosystem, url, source_file, default_hosts):
+def add_if_private(private_registries, ecosystem, url, source_file, default_hosts):
+    """Appends a private-registry entry if url's host isn't one of
+    default_hosts for this ecosystem. No-op if the host matches a default
+    or can't be parsed, this is the single choke point every scan_*
+    function routes registry URLs through."""
     host = host_of(url)
     if not host or host in default_hosts:
         return
-    results.append({"ecosystem": ecosystem, "host": host, "url": url, "source_file": source_file})
+    private_registries.append({"ecosystem": ecosystem, "host": host, "url": url, "source_file": source_file})
 
 
 # --- per-ecosystem package manager inventory ----------------------------
 
-def scan_npm(root, pm, registries):
+def scan_npm(root, package_managers, private_registries):
+    """npm/yarn/pnpm: declared count from package.json, resolved count
+    from whichever lockfile is present (format differs by tool), plus any
+    non-default registry found in package.json or .npmrc. Appends one
+    entry to package_managers if any npm manifest/lockfile exists."""
     manifests = find_files(root, names={"package.json"})
     lockfiles = find_files(root, names={"package-lock.json", "yarn.lock", "pnpm-lock.yaml"})
     if not manifests and not lockfiles:
         return
-    declared = None
+    declared_count = None
     for manifest in manifests:
         data = read_json(manifest)
         if not isinstance(data, dict):
             continue
-        declared = sum(len(data.get(k) or {}) for k in
-                        ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"))
+        declared_count = sum(len(data.get(key) or {}) for key in
+                              ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"))
         publish_registry = (data.get("publishConfig") or {}).get("registry")
         if publish_registry:
-            add_if_private(registries, "npm", publish_registry, manifest, DEFAULT_REGISTRY_HOSTS["npm"])
+            add_if_private(private_registries, "npm", publish_registry, manifest, DEFAULT_REGISTRY_HOSTS["npm"])
         break
-    resolved = None
-    for lock in lockfiles:
-        name = os.path.basename(lock)
-        text = read_text(lock)
-        if name == "package-lock.json":
-            data = read_json(lock)
+    resolved_count = None
+    for lockfile in lockfiles:
+        filename = os.path.basename(lockfile)
+        text = read_text(lockfile)
+        if filename == "package-lock.json":
+            data = read_json(lockfile)
             if isinstance(data, dict) and isinstance(data.get("packages"), dict):
-                resolved = len(data["packages"]) - (1 if "" in data["packages"] else 0)
+                # v2/v3 lockfile: flat "packages" map, one entry per resolved
+                # package plus a "" entry for the root project itself.
+                resolved_count = len(data["packages"]) - (1 if "" in data["packages"] else 0)
             elif isinstance(data, dict) and isinstance(data.get("dependencies"), dict):
-                def recurse(deps):
-                    n = 0
-                    for v in deps.values():
-                        n += 1
-                        if isinstance(v, dict) and isinstance(v.get("dependencies"), dict):
-                            n += recurse(v["dependencies"])
-                    return n
-                resolved = recurse(data["dependencies"])
-        elif name == "yarn.lock":
-            resolved = sum(1 for line in text.splitlines()
-                            if line and not line[0].isspace() and line.rstrip().endswith(":")
-                            and not line.startswith("#")) or None
-        elif name == "pnpm-lock.yaml":
-            resolved = len(re.findall(r"^\s{2}[^\s#][^:]*:\s*$", text, re.MULTILINE)) or None
-        if resolved is not None:
+                # v1 lockfile: nested "dependencies" tree, walk it recursively.
+                def count_nested_deps(deps):
+                    count = 0
+                    for value in deps.values():
+                        count += 1
+                        if isinstance(value, dict) and isinstance(value.get("dependencies"), dict):
+                            count += count_nested_deps(value["dependencies"])
+                    return count
+                resolved_count = count_nested_deps(data["dependencies"])
+        elif filename == "yarn.lock":
+            # yarn.lock entries are blocks whose header line starts at
+            # column 0 and ends with ":", one block per resolved package.
+            resolved_count = sum(1 for line in text.splitlines()
+                                  if line and not line[0].isspace() and line.rstrip().endswith(":")
+                                  and not line.startswith("#")) or None
+        elif filename == "pnpm-lock.yaml":
+            resolved_count = len(re.findall(r"^\s{2}[^\s#][^:]*:\s*$", text, re.MULTILINE)) or None
+        if resolved_count is not None:
             break
-    for rc_name in (".npmrc",):
-        for rc in find_files(root, names={rc_name}):
-            text = read_text(rc)
-            for m in re.finditer(r"^(?:@[\w-]+:)?registry\s*=\s*(\S+)", text, re.MULTILINE):
-                add_if_private(registries, "npm", m.group(1), rc, DEFAULT_REGISTRY_HOSTS["npm"])
-    pm.append({"ecosystem": "npm", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+    for npmrc_file in find_files(root, names={".npmrc"}):
+        text = read_text(npmrc_file)
+        for match in re.finditer(r"^(?:@[\w-]+:)?registry\s*=\s*(\S+)", text, re.MULTILINE):
+            add_if_private(private_registries, "npm", match.group(1), npmrc_file, DEFAULT_REGISTRY_HOSTS["npm"])
+    package_managers.append({"ecosystem": "npm", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-def scan_python(root, pm, registries):
-    req_files = find_files(root, suffixes=("requirements.txt",)) + \
+def scan_python(root, package_managers, private_registries):
+    """Python: declared count from requirements*.txt, pyproject.toml
+    (PEP 621 and Poetry), and Pipfile; resolved count from Pipfile.lock
+    and poetry.lock; non-default index URLs from any of those plus
+    pip.conf/pip.ini."""
+    requirements_files = find_files(root, suffixes=("requirements.txt",)) + \
         [f for f in find_files(root, suffixes=(".txt",)) if os.path.basename(f).startswith("requirements")]
-    req_files = sorted(set(req_files))
-    pyproject = find_files(root, names={"pyproject.toml"})
-    pipfile = find_files(root, names={"Pipfile"})
-    pipfile_lock = find_files(root, names={"Pipfile.lock"})
-    poetry_lock = find_files(root, names={"poetry.lock"})
-    manifests = req_files + pyproject + pipfile
-    lockfiles = pipfile_lock + poetry_lock
+    requirements_files = sorted(set(requirements_files))
+    pyproject_files = find_files(root, names={"pyproject.toml"})
+    pipfiles = find_files(root, names={"Pipfile"})
+    pipfile_locks = find_files(root, names={"Pipfile.lock"})
+    poetry_locks = find_files(root, names={"poetry.lock"})
+    manifests = requirements_files + pyproject_files + pipfiles
+    lockfiles = pipfile_locks + poetry_locks
     if not manifests and not lockfiles:
         return
-    declared = None
-    for req in req_files:
-        text = read_text(req)
+    declared_count = None
+    for requirements_file in requirements_files:
+        text = read_text(requirements_file)
         count = 0
         for line in text.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
             if line.startswith("-"):
-                m = re.match(r"--(?:extra-)?index-url\s+(\S+)", line)
-                if m:
-                    add_if_private(registries, "pip", m.group(1), req, DEFAULT_REGISTRY_HOSTS["pip"])
+                match = re.match(r"--(?:extra-)?index-url\s+(\S+)", line)
+                if match:
+                    add_if_private(private_registries, "pip", match.group(1), requirements_file,
+                                    DEFAULT_REGISTRY_HOSTS["pip"])
                 continue
             count += 1
-        declared = (declared or 0) + count
-    for pp in pyproject:
-        text = read_text(pp)
-        m = re.search(r"dependencies\s*=\s*\[(.*?)\]", text, re.DOTALL)
-        if m:
-            declared = (declared or 0) + len(re.findall(r'["\']([^"\']+)["\']', m.group(1)))
-        poetry_deps = toml_section_lines(text, "tool.poetry.dependencies")
-        if poetry_deps:
-            declared = (declared or 0) + count_key_value_lines(poetry_deps, exclude_keys={"python"})
-        for src_m in re.finditer(r'\[\[tool\.poetry\.source\]\].*?url\s*=\s*["\']([^"\']+)["\']', text, re.DOTALL):
-            add_if_private(registries, "pip", src_m.group(1), pp, DEFAULT_REGISTRY_HOSTS["pip"])
-    for pf in pipfile:
-        text = read_text(pf)
+        declared_count = (declared_count or 0) + count
+    for pyproject_file in pyproject_files:
+        text = read_text(pyproject_file)
+        pep621_match = re.search(r"dependencies\s*=\s*\[(.*?)\]", text, re.DOTALL)
+        if pep621_match:
+            declared_count = (declared_count or 0) + len(re.findall(r'["\']([^"\']+)["\']', pep621_match.group(1)))
+        poetry_dep_lines = toml_section_lines(text, "tool.poetry.dependencies")
+        if poetry_dep_lines:
+            declared_count = (declared_count or 0) + count_key_value_lines(poetry_dep_lines, exclude_keys={"python"})
+        for source_match in re.finditer(
+                r'\[\[tool\.poetry\.source\]\].*?url\s*=\s*["\']([^"\']+)["\']', text, re.DOTALL):
+            add_if_private(private_registries, "pip", source_match.group(1), pyproject_file,
+                            DEFAULT_REGISTRY_HOSTS["pip"])
+    for pipfile in pipfiles:
+        text = read_text(pipfile)
         for section in ("packages", "dev-packages"):
-            lines = toml_section_lines(text, section)
-            declared = (declared or 0) + count_key_value_lines(lines)
-    resolved = None
-    for lock in pipfile_lock:
-        data = read_json(lock)
+            section_lines = toml_section_lines(text, section)
+            declared_count = (declared_count or 0) + count_key_value_lines(section_lines)
+    resolved_count = None
+    for lockfile in pipfile_locks:
+        data = read_json(lockfile)
         if isinstance(data, dict):
-            resolved = (resolved or 0) + len(data.get("default") or {}) + len(data.get("develop") or {})
-    for lock in poetry_lock:
-        text = read_text(lock)
-        n = len(re.findall(r"^\[\[package\]\]\s*$", text, re.MULTILINE))
-        if n:
-            resolved = (resolved or 0) + n
+            resolved_count = (resolved_count or 0) + len(data.get("default") or {}) + len(data.get("develop") or {})
+    for lockfile in poetry_locks:
+        text = read_text(lockfile)
+        block_count = len(re.findall(r"^\[\[package\]\]\s*$", text, re.MULTILINE))
+        if block_count:
+            resolved_count = (resolved_count or 0) + block_count
     for pip_conf in find_files(root, names={"pip.conf", "pip.ini"}):
         text = read_text(pip_conf)
-        m = re.search(r"index-url\s*=\s*(\S+)", text)
-        if m:
-            add_if_private(registries, "pip", m.group(1), pip_conf, DEFAULT_REGISTRY_HOSTS["pip"])
-    pm.append({"ecosystem": "python", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+        match = re.search(r"index-url\s*=\s*(\S+)", text)
+        if match:
+            add_if_private(private_registries, "pip", match.group(1), pip_conf, DEFAULT_REGISTRY_HOSTS["pip"])
+    package_managers.append({"ecosystem": "python", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-def scan_go(root, pm, registries):
+def scan_go(root, package_managers, private_registries):
+    """Go: declared count from go.mod's require directives, resolved
+    count from unique modules in go.sum, plus any `replace` directive
+    that points at a private host instead of a version."""
     manifests = find_files(root, names={"go.mod"})
     lockfiles = find_files(root, names={"go.sum"})
     if not manifests and not lockfiles:
         return
-    declared = None
-    for mod in manifests:
-        text = read_text(mod)
+    declared_count = None
+    for go_mod_file in manifests:
+        text = read_text(go_mod_file)
         count = 0
-        in_block = False
+        in_require_block = False
         for line in text.splitlines():
-            s = line.strip()
-            if s.startswith("require ("):
-                in_block = True
+            stripped_line = line.strip()
+            if stripped_line.startswith("require ("):
+                in_require_block = True
                 continue
-            if in_block:
-                if s == ")":
-                    in_block = False
+            if in_require_block:
+                if stripped_line == ")":
+                    in_require_block = False
                     continue
-                if s and not s.startswith("//"):
+                if stripped_line and not stripped_line.startswith("//"):
                     count += 1
                 continue
-            if s.startswith("require ") and "(" not in s:
+            if stripped_line.startswith("require ") and "(" not in stripped_line:
                 count += 1
-        declared = (declared or 0) + count
-        for m in re.finditer(r"^replace\s+\S+\s*=>\s*(\S+)", text, re.MULTILINE):
-            target = m.group(1)
+        declared_count = (declared_count or 0) + count
+        for match in re.finditer(r"^replace\s+\S+\s*=>\s*(\S+)", text, re.MULTILINE):
+            target = match.group(1)
             if "://" in target or (re.match(r"^[\w.-]+\.[a-z]{2,}/", target)):
                 url = target if "://" in target else f"https://{target}"
-                add_if_private(registries, "go", url, mod, set())
-    resolved = None
-    for sm in lockfiles:
-        text = read_text(sm)
-        mods = {line.split()[0] for line in text.splitlines() if line.split()}
-        if mods:
-            resolved = (resolved or 0) + len(mods)
-    pm.append({"ecosystem": "go", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+                add_if_private(private_registries, "go", url, go_mod_file, set())
+    resolved_count = None
+    for go_sum_file in lockfiles:
+        text = read_text(go_sum_file)
+        # Each line is "module version hash"; a module usually appears
+        # twice (module hash + go.mod hash), dedupe to unique modules.
+        modules = {line.split()[0] for line in text.splitlines() if line.split()}
+        if modules:
+            resolved_count = (resolved_count or 0) + len(modules)
+    package_managers.append({"ecosystem": "go", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-def scan_java(root, pm, registries):
+def scan_java(root, package_managers, private_registries):
+    """Java/Maven/Gradle: declared count from <dependency> tags (pom.xml)
+    or dependency-config calls (build.gradle), plus any custom Maven
+    repository URL. No resolved count, Maven has no default lockfile."""
     manifests = find_files(root, names={"pom.xml", "build.gradle", "build.gradle.kts"})
     if not manifests:
         return
-    declared = None
-    for m_path in manifests:
-        text = read_text(m_path)
-        if m_path.endswith("pom.xml"):
-            declared = (declared or 0) + len(re.findall(r"<dependency>", text))
-            repos = re.search(r"<repositories>(.*?)</repositories>", text, re.DOTALL)
-            if repos:
-                for url_m in re.finditer(r"<url>([^<]+)</url>", repos.group(1)):
-                    add_if_private(registries, "maven", url_m.group(1), m_path, DEFAULT_REGISTRY_HOSTS["maven"])
+    declared_count = None
+    for manifest in manifests:
+        text = read_text(manifest)
+        if manifest.endswith("pom.xml"):
+            declared_count = (declared_count or 0) + len(re.findall(r"<dependency>", text))
+            repositories_block = re.search(r"<repositories>(.*?)</repositories>", text, re.DOTALL)
+            if repositories_block:
+                for url_match in re.finditer(r"<url>([^<]+)</url>", repositories_block.group(1)):
+                    add_if_private(private_registries, "maven", url_match.group(1), manifest,
+                                    DEFAULT_REGISTRY_HOSTS["maven"])
         else:
-            declared = (declared or 0) + len(re.findall(
-                r"\b(?:implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly)\s*[\(\'\"]", text))
-            for url_m in re.finditer(r"maven\s*\{\s*url\s*[=]?\s*[\'\"]([^\'\"]+)[\'\"]", text):
-                add_if_private(registries, "maven", url_m.group(1), m_path, DEFAULT_REGISTRY_HOSTS["maven"])
-    pm.append({"ecosystem": "java", "manifest_files": manifests, "lockfile_files": [],
-               "declared_dependencies": declared, "resolved_dependencies": None})
+            declared_count = (declared_count or 0) + len(re.findall(
+                r"\b(?:implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly)\s*[\(\'\"]",
+                text))
+            for url_match in re.finditer(r"maven\s*\{\s*url\s*[=]?\s*[\'\"]([^\'\"]+)[\'\"]", text):
+                add_if_private(private_registries, "maven", url_match.group(1), manifest,
+                                DEFAULT_REGISTRY_HOSTS["maven"])
+    package_managers.append({"ecosystem": "java", "manifest_files": manifests, "lockfile_files": [],
+                              "declared_dependencies": declared_count, "resolved_dependencies": None})
 
 
-def scan_ruby(root, pm, registries):
+def scan_ruby(root, package_managers, private_registries):
+    """Ruby/Bundler: declared count from `gem` lines in the Gemfile,
+    resolved count from the GEM specs: block in Gemfile.lock, plus any
+    non-default `source` line."""
     manifests = find_files(root, names={"Gemfile"})
     lockfiles = find_files(root, names={"Gemfile.lock"})
     if not manifests and not lockfiles:
         return
-    declared = None
-    for gf in manifests:
-        text = read_text(gf)
-        declared = (declared or 0) + len(re.findall(r"^\s*gem\s+['\"]", text, re.MULTILINE))
-        for m in re.finditer(r"^\s*source\s+['\"]([^'\"]+)['\"]", text, re.MULTILINE):
-            add_if_private(registries, "gem", m.group(1), gf, DEFAULT_REGISTRY_HOSTS["gem"])
-    resolved = None
-    for lock in lockfiles:
-        text = read_text(lock)
+    declared_count = None
+    for gemfile in manifests:
+        text = read_text(gemfile)
+        declared_count = (declared_count or 0) + len(re.findall(r"^\s*gem\s+['\"]", text, re.MULTILINE))
+        for match in re.finditer(r"^\s*source\s+['\"]([^'\"]+)['\"]", text, re.MULTILINE):
+            add_if_private(private_registries, "gem", match.group(1), gemfile, DEFAULT_REGISTRY_HOSTS["gem"])
+    resolved_count = None
+    for lockfile in lockfiles:
+        text = read_text(lockfile)
         count = 0
-        in_specs = False
+        in_specs_section = False
         for line in text.splitlines():
             if line.strip() == "specs:":
-                in_specs = True
+                in_specs_section = True
                 continue
-            if in_specs:
+            if in_specs_section:
+                # Top-level gems are indented 4 spaces; their own
+                # dependencies are indented 6, only count the former.
                 if line.startswith("    ") and not line.startswith("      "):
                     count += 1
                 elif line and not line.startswith(" "):
-                    in_specs = False
+                    in_specs_section = False
         if count:
-            resolved = (resolved or 0) + count
-    pm.append({"ecosystem": "ruby", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+            resolved_count = (resolved_count or 0) + count
+    package_managers.append({"ecosystem": "ruby", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-def scan_php(root, pm, registries):
+def scan_php(root, package_managers, private_registries):
+    """PHP/Composer: declared count from require + require-dev in
+    composer.json, resolved count from packages + packages-dev arrays in
+    composer.lock, plus any custom repository URL."""
     manifests = find_files(root, names={"composer.json"})
     lockfiles = find_files(root, names={"composer.lock"})
     if not manifests and not lockfiles:
         return
-    declared = None
-    for cj in manifests:
-        data = read_json(cj)
+    declared_count = None
+    for composer_json_file in manifests:
+        data = read_json(composer_json_file)
         if isinstance(data, dict):
-            req = {k: v for k, v in (data.get("require") or {}).items() if k != "php"}
-            req_dev = data.get("require-dev") or {}
-            declared = (declared or 0) + len(req) + len(req_dev)
-            repos = data.get("repositories")
-            if isinstance(repos, list):
-                for r in repos:
-                    if isinstance(r, dict) and r.get("url"):
-                        add_if_private(registries, "composer", r["url"], cj, DEFAULT_REGISTRY_HOSTS["composer"])
-            elif isinstance(repos, dict):
-                for r in repos.values():
-                    if isinstance(r, dict) and r.get("url"):
-                        add_if_private(registries, "composer", r["url"], cj, DEFAULT_REGISTRY_HOSTS["composer"])
-    resolved = None
-    for lock in lockfiles:
-        data = read_json(lock)
+            required = {k: v for k, v in (data.get("require") or {}).items() if k != "php"}
+            required_dev = data.get("require-dev") or {}
+            declared_count = (declared_count or 0) + len(required) + len(required_dev)
+            repositories = data.get("repositories")
+            if isinstance(repositories, list):
+                for repository in repositories:
+                    if isinstance(repository, dict) and repository.get("url"):
+                        add_if_private(private_registries, "composer", repository["url"], composer_json_file,
+                                        DEFAULT_REGISTRY_HOSTS["composer"])
+            elif isinstance(repositories, dict):
+                for repository in repositories.values():
+                    if isinstance(repository, dict) and repository.get("url"):
+                        add_if_private(private_registries, "composer", repository["url"], composer_json_file,
+                                        DEFAULT_REGISTRY_HOSTS["composer"])
+    resolved_count = None
+    for lockfile in lockfiles:
+        data = read_json(lockfile)
         if isinstance(data, dict):
-            resolved = (resolved or 0) + len(data.get("packages") or []) + len(data.get("packages-dev") or [])
-    pm.append({"ecosystem": "php", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+            resolved_count = (resolved_count or 0) + len(data.get("packages") or []) + \
+                len(data.get("packages-dev") or [])
+    package_managers.append({"ecosystem": "php", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-def scan_rust(root, pm, registries):
+def scan_rust(root, package_managers, private_registries):
+    """Rust/Cargo: declared count from the [dependencies]/[dev-dependencies]/
+    [build-dependencies] tables in Cargo.toml, resolved count from
+    [[package]] blocks in Cargo.lock, plus any custom registry in a
+    repo-local .cargo/config.toml."""
     manifests = find_files(root, names={"Cargo.toml"})
     lockfiles = find_files(root, names={"Cargo.lock"})
     if not manifests and not lockfiles:
         return
-    declared = None
-    for ct in manifests:
-        text = read_text(ct)
+    declared_count = None
+    for cargo_toml_file in manifests:
+        text = read_text(cargo_toml_file)
         for section in ("dependencies", "dev-dependencies", "build-dependencies"):
-            declared = (declared or 0) + count_key_value_lines(toml_section_lines(text, section))
-    for cfg in find_files(root, names={"config.toml"}):
-        if os.path.basename(os.path.dirname(cfg)) != ".cargo":
+            declared_count = (declared_count or 0) + count_key_value_lines(toml_section_lines(text, section))
+    for cargo_config_file in find_files(root, names={"config.toml"}):
+        if os.path.basename(os.path.dirname(cargo_config_file)) != ".cargo":
             continue
-        text = read_text(cfg)
-        for m in re.finditer(r"registry\s*=\s*['\"]([^'\"]+)['\"]", text):
-            add_if_private(registries, "cargo", m.group(1), cfg, DEFAULT_REGISTRY_HOSTS["cargo"])
-    resolved = None
-    for lock in lockfiles:
-        text = read_text(lock)
-        n = len(re.findall(r"^\[\[package\]\]\s*$", text, re.MULTILINE))
-        if n:
-            resolved = (resolved or 0) + n
-    pm.append({"ecosystem": "rust", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+        text = read_text(cargo_config_file)
+        for match in re.finditer(r"registry\s*=\s*['\"]([^'\"]+)['\"]", text):
+            add_if_private(private_registries, "cargo", match.group(1), cargo_config_file,
+                            DEFAULT_REGISTRY_HOSTS["cargo"])
+    resolved_count = None
+    for lockfile in lockfiles:
+        text = read_text(lockfile)
+        block_count = len(re.findall(r"^\[\[package\]\]\s*$", text, re.MULTILINE))
+        if block_count:
+            resolved_count = (resolved_count or 0) + block_count
+    package_managers.append({"ecosystem": "rust", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-def scan_dotnet(root, pm, registries):
+def scan_dotnet(root, package_managers, private_registries):
+    """.NET/NuGet: declared count from <PackageReference> tags across
+    .csproj files, resolved count from packages.lock.json (if present),
+    plus any custom source in nuget.config."""
     manifests = find_files(root, suffixes=(".csproj",))
     lockfiles = find_files(root, names={"packages.lock.json"})
     if not manifests and not lockfiles:
         return
-    declared = None
-    for cs in manifests:
-        text = read_text(cs)
-        declared = (declared or 0) + len(re.findall(r"<PackageReference\b", text))
-    resolved = None
-    for lock in lockfiles:
-        data = read_json(lock)
+    declared_count = None
+    for csproj_file in manifests:
+        text = read_text(csproj_file)
+        declared_count = (declared_count or 0) + len(re.findall(r"<PackageReference\b", text))
+    resolved_count = None
+    for lockfile in lockfiles:
+        data = read_json(lockfile)
         if isinstance(data, dict) and isinstance(data.get("dependencies"), dict):
             total = 0
             for framework_deps in data["dependencies"].values():
                 if isinstance(framework_deps, dict):
                     total += len(framework_deps)
             if total:
-                resolved = (resolved or 0) + total
-    for nc in find_files(root, names={"nuget.config", "NuGet.Config"}):
-        text = read_text(nc)
-        for m in re.finditer(r'<add\s+key="[^"]*"\s+value="([^"]+)"', text):
-            if m.group(1).startswith("http"):
-                add_if_private(registries, "nuget", m.group(1), nc, DEFAULT_REGISTRY_HOSTS["nuget"])
-    pm.append({"ecosystem": "dotnet", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+                resolved_count = (resolved_count or 0) + total
+    for nuget_config_file in find_files(root, names={"nuget.config", "NuGet.Config"}):
+        text = read_text(nuget_config_file)
+        for match in re.finditer(r'<add\s+key="[^"]*"\s+value="([^"]+)"', text):
+            if match.group(1).startswith("http"):
+                add_if_private(private_registries, "nuget", match.group(1), nuget_config_file,
+                                DEFAULT_REGISTRY_HOSTS["nuget"])
+    package_managers.append({"ecosystem": "dotnet", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-def scan_dart(root, pm, _registries):
+def scan_dart(root, package_managers, _private_registries):
+    """Dart/Flutter: declared count from the dependencies/dev_dependencies
+    blocks in pubspec.yaml, resolved count from top-level package entries
+    in pubspec.lock. Takes private_registries for signature symmetry with
+    the other scan_* functions but pub.dev has no private-registry config
+    convention to check."""
     manifests = find_files(root, names={"pubspec.yaml"})
     lockfiles = find_files(root, names={"pubspec.lock"})
     if not manifests and not lockfiles:
         return
-    declared = None
-    for pf in manifests:
-        text = read_text(pf)
-        in_deps = False
+    declared_count = None
+    for pubspec_file in manifests:
+        text = read_text(pubspec_file)
+        in_deps_section = False
         count = 0
         for line in text.splitlines():
             if re.match(r"^(dependencies|dev_dependencies):\s*$", line):
-                in_deps = True
+                in_deps_section = True
                 continue
-            if in_deps:
+            if in_deps_section:
                 if re.match(r"^\S", line):
-                    in_deps = False
+                    in_deps_section = False
                     continue
                 if re.match(r"^  \S[^:]*:", line):
                     count += 1
-        declared = (declared or 0) + count
-    resolved = None
-    for lock in lockfiles:
-        text = read_text(lock)
-        n = len(re.findall(r"^  \S[^:]*:\s*$", text, re.MULTILINE))
-        if n:
-            resolved = (resolved or 0) + n
-    pm.append({"ecosystem": "dart", "manifest_files": manifests, "lockfile_files": lockfiles,
-               "declared_dependencies": declared, "resolved_dependencies": resolved})
+        declared_count = (declared_count or 0) + count
+    resolved_count = None
+    for lockfile in lockfiles:
+        text = read_text(lockfile)
+        block_count = len(re.findall(r"^  \S[^:]*:\s*$", text, re.MULTILINE))
+        if block_count:
+            resolved_count = (resolved_count or 0) + block_count
+    package_managers.append({"ecosystem": "dart", "manifest_files": manifests, "lockfile_files": lockfiles,
+                              "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
 def scan_package_managers(root):
-    pm = []
-    registries = []
-    for fn in (scan_npm, scan_python, scan_go, scan_java, scan_ruby, scan_php, scan_rust, scan_dotnet, scan_dart):
-        fn(root, pm, registries)
-    return pm, registries
+    """Runs every ecosystem's scan_* function and collects their results.
+    Returns (package_managers, private_registries), the two lists every
+    scan_* function appends/extends in place."""
+    package_managers = []
+    private_registries = []
+    for scan_fn in (scan_npm, scan_python, scan_go, scan_java, scan_ruby, scan_php, scan_rust, scan_dotnet,
+                     scan_dart):
+        scan_fn(root, package_managers, private_registries)
+    return package_managers, private_registries
 
 
 # --- containers ----------------------------------------------------------
 
 def scan_containers(root):
-    dockerfiles = []
-    for path in find_files(root, names={"Dockerfile"}):
-        dockerfiles.append(path)
+    """Finds every Dockerfile (including suffixed variants like
+    Dockerfile.dev) with its FROM base images, and every
+    docker-compose*.yml/.yaml file."""
+    dockerfile_paths = list(find_files(root, names={"Dockerfile"}))
     for dirpath, _dirnames, filenames in walk(root):
-        for fn in filenames:
-            if fn.startswith("Dockerfile") and fn != "Dockerfile":
-                dockerfiles.append(os.path.join(dirpath, fn))
-    entries = []
-    for path in sorted(set(dockerfiles)):
+        for filename in filenames:
+            if filename.startswith("Dockerfile") and filename != "Dockerfile":
+                dockerfile_paths.append(os.path.join(dirpath, filename))
+    dockerfiles = []
+    for path in sorted(set(dockerfile_paths)):
         text = read_text(path)
-        bases = re.findall(r"^FROM\s+(\S+)", text, re.MULTILINE)
-        entries.append({"path": path, "base_images": bases})
+        base_images = re.findall(r"^FROM\s+(\S+)", text, re.MULTILINE)
+        dockerfiles.append({"path": path, "base_images": base_images})
     compose_files = []
     for dirpath, _dirnames, filenames in walk(root):
-        for fn in filenames:
-            if re.match(r"^docker-compose.*\.ya?ml$", fn):
-                compose_files.append(os.path.join(dirpath, fn))
-    return {"dockerfiles": entries, "compose_files": sorted(compose_files)}
+        for filename in filenames:
+            if re.match(r"^docker-compose.*\.ya?ml$", filename):
+                compose_files.append(os.path.join(dirpath, filename))
+    return {"dockerfiles": dockerfiles, "compose_files": sorted(compose_files)}
 
 
 # --- IaC -------------------------------------------------------------------
 
 def scan_iac(root):
+    """Finds Infrastructure-as-Code files by a mix of filename (Terraform,
+    Helm, Pulumi, Serverless, CDK) and content sniffing (CloudFormation,
+    Kubernetes, Ansible, which all use plain .yml/.yaml/.json)."""
     result = {"terraform": [], "cloudformation": [], "kubernetes": [], "helm": [],
               "ansible": [], "pulumi": [], "serverless": [], "cdk": []}
     result["terraform"] = sorted(find_files(root, suffixes=(".tf", ".tfvars")))
@@ -542,21 +645,25 @@ def scan_iac(root):
     result["serverless"] = sorted(find_files(root, names={"serverless.yml", "serverless.yaml"}))
     result["cdk"] = sorted(find_files(root, names={"cdk.json"}))
 
+    # These three overlap in file extension (.yml/.yaml/.json), so content
+    # sniffing decides which bucket a file lands in. Checked in this order
+    # since a CloudFormation template could technically also contain the
+    # substring "kind:" in a resource property, but not the reverse.
     for dirpath, _dirnames, filenames in walk(root):
-        for fn in filenames:
-            if not fn.endswith((".yml", ".yaml", ".json")):
+        for filename in filenames:
+            if not filename.endswith((".yml", ".yaml", ".json")):
                 continue
-            path = os.path.join(dirpath, fn)
+            path = os.path.join(dirpath, filename)
             text = read_text(path)
             if not text:
                 continue
             if "AWSTemplateFormatVersion" in text or re.search(r"Type:\s*['\"]?AWS::", text):
                 result["cloudformation"].append(path)
                 continue
-            if fn.endswith((".yml", ".yaml")) and "apiVersion:" in text and "kind:" in text:
+            if filename.endswith((".yml", ".yaml")) and "apiVersion:" in text and "kind:" in text:
                 result["kubernetes"].append(path)
                 continue
-            if fn.endswith((".yml", ".yaml")) and "hosts:" in text and "tasks:" in text:
+            if filename.endswith((".yml", ".yaml")) and "hosts:" in text and "tasks:" in text:
                 result["ansible"].append(path)
 
     for key in result:
@@ -567,6 +674,8 @@ def scan_iac(root):
 # --- main ------------------------------------------------------------------
 
 def main():
+    """CLI entry point: `cartridge_scan.py [path]` (defaults to `.`).
+    Runs every scan and prints one JSON object to stdout."""
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     root = os.path.abspath(root)
 
