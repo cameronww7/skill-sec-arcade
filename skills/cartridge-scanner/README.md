@@ -191,7 +191,7 @@ host above.
 
 ## Next cabinet
 
-[`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map) is the natural next step once you know what's in the repo: it builds the architecture-level threat model and STRIDE breakdown this skill's inventory feeds into.
+Two natural next steps once you know what's in the repo: [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map) builds the architecture-level threat model and STRIDE breakdown this skill's inventory feeds into, and [`dead-weight-detector`](../dead-weight-detector) takes the dependency inventory from this report one level deeper, per package, is it actually earning its keep.
 
 ## License
 
