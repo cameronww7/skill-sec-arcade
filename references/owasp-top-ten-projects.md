@@ -27,29 +27,12 @@
 19. Serverless Top 10 (2018) — Educates practitioners on the consequences of the most common serverless application security vulnerabilities and how to identify and protect against them. — https://owasp.org/www-project-serverless-top-10/
 20. IoT Top 10 (2018) — Helps manufacturers, developers, and consumers understand the security issues associated with Internet of Things devices. — https://owasp.org/www-project-internet-of-things/
 21. Operational Technology Top 10 (2025) — A comprehensive list of the top security risks and vulnerabilities specific to Operational Technology (OT) environments. — https://owasp.org/www-project-operational-technology-top-10/
+22. Agentic Skills Top 10 — Documents the 10 most critical security risks in agentic AI skills across all major AI agent platforms. — Status: AST01-AST10 drafted, incidents tracked through July 2026, Incubator, targeting v1.0 Q3 2026 — https://owasp.org/www-project-agentic-skills-top-10/
 
-## In Development (real, current activity, no numbered list yet)
-
-1. Agentic Skills Top 10 — Documents the 10 most critical security risks in agentic AI skills across all major AI agent platforms. — Status: AST01-AST10 drafted, incidents tracked through July 2026, Incubator, targeting v1.0 Q3 2026 — https://owasp.org/www-project-agentic-skills-top-10/
-2. Top 10 for Maritime Security — Aims to develop an OWASP Top 10 list specifically tailored to the maritime industry. — Status: Live page, updated Nov 2025, active data-collection phase — https://owasp.org/www-project-top-10-for-maritime-security/
-
-## Dropped: confirmed dead, no 2026 activity
-
-| Project | Why |
-|---|---|
-| DevSecOps Top 10 | Last real content Oct 2023-era stub, "roadmap for 2023" never delivered |
-| Thick Client Top 10 | Last commit ~Oct 2025, intro only, no numbered items, superseded in substance by TCASVS |
-| Top 10 in XR | Flagged by OWASP itself as "Needs Website Update," default template never replaced |
-
-## Confirmed Inactive (OWASP's own designation)
-
-| Project | URL |
-|---|---|
-| Cloud-Native Application Security Top 10 | https://owasp.org/www-project-cloud-native-application-security-top-10/ |
 
 ## Count
 
-21 Active + 2 In Development = 23 real OWASP Top Ten projects. 3 more are technically live pages but dead in substance. 1 is officially inactive.
+21 Active, real OWASP Top Ten projects. 3 more are technically live pages but dead in substance. 1 is officially inactive.
 
 ## Notes on accuracy
 

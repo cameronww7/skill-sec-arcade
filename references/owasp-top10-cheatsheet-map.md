@@ -2,7 +2,7 @@
 
 Quick lookup for `dungeon-crawl-threat-map`. Each row: the category, what it actually means in plain language, and the OWASP Cheat Sheet Series sheets that give concrete remediation guidance. Cite the sheet by name, don't guess a URL unless you're confident of the exact slug. The reader can search `cheatsheetseries.owasp.org` for the name directly.
 
-This is the OWASP Top 10:2025 edition (released November 2025, finalized January 2026), the first update since 2021. If a codebase or report you're reading still cites the 2021 numbering, note the mapping: 2021's A10 SSRF is now folded into 2025's A01, 2021's A06 Vulnerable Components is now split out as 2025's A03, and several categories re-ranked without changing name.
+This is the OWASP Top 10:2025 Web Application Security Risks edition (released November 2025, finalized January 2026), the first update since 2021. If a codebase or report you're reading still cites the 2021 numbering, note the mapping: 2021's A10 SSRF is now folded into 2025's A01, 2021's A06 Vulnerable Components is now split out as 2025's A03, and several categories re-ranked without changing name.
 
 | Category | Plain language | Relevant Cheat Sheets |
 |---|---|---|
