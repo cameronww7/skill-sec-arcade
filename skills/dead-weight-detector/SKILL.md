@@ -126,9 +126,10 @@ If more than 15 dependencies qualified for the deep dive, note the cap and which
 
 ## Step 9: Offer to save
 
-Ask whether to keep this inline or write it to a file, e.g. `DEAD_WEIGHT_REPORT.md`. Frame it as something worth re-running periodically, dependency health drifts, a `KEEP` today can become `KEEP BUT WATCH` in six months without any code change on this side.
+After producing the report, follow the save prompt defined in `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`. Frame it as something worth re-running periodically, dependency health drifts, a `KEEP` today can become `KEEP BUT WATCH` in six months without any code change on this side.
 
 ## Reference material
 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py`: does the mechanical work, local usage-site scanning (Step 1) and live registry health lookups (Step 5). Reuses `cartridge_scan.py`'s file-discovery helpers but does not modify that script or its output.
 - `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md`: which health signal is available per ecosystem and where it comes from, the OSV.dev ecosystem-name mapping, and the exact health-tier thresholds, used in Step 5.
+- `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention, used in Step 9.

@@ -206,9 +206,10 @@ anything else introduced in this report.]
 
 ## Step 10: Offer to save
 
-After producing the report, ask whether the user wants it kept inline in this conversation or written to a markdown file, e.g. `THREAT_MODEL.md` at the repo root, or a path they name. Frame it as making the report reusable, something the team can revisit, diff against next time, or hand to someone new, not just chat scrollback that disappears. If they want it saved, write the exact same content to the file, don't summarize or trim it for the file version.
+After producing the report, follow the save prompt defined in `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`. Frame it as making the report reusable, something the team can revisit, diff against next time, or hand to someone new, not just chat scrollback that disappears.
 
 ## Reference material
 
 - `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md`: OWASP Top 10:2025 categories mapped to relevant Cheat Sheet Series sheets, used in Step 6.
 - `${CLAUDE_PLUGIN_ROOT}/references/language-attack-vectors.md`: language/runtime to common attack vector lookup, used in Step 7.
+- `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention, used in Step 10.

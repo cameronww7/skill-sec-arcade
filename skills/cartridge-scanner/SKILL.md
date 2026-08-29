@@ -135,9 +135,10 @@ Containers / SBOM as applicable, no tool or vendor names]
 
 ## Step 11: Offer to save
 
-After producing the report, ask whether the user wants it kept inline or written to a file, e.g. `CARTRIDGE_SCAN.md` at the repo root, or a path they name. If saved, write the exact same content, don't trim it for the file version. Mention that this is a good artifact to re-run and diff against later, especially the package manager and private registry sections, since those drift as dependencies get added.
+After producing the report, follow the save prompt defined in `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`. This report is a good artifact to re-run and diff against later, especially the package manager and private registry sections, since those drift as dependencies get added, mention that when offering to save.
 
 ## Reference material
 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/cartridge_scan.py`: does the mechanical data-gathering (scc invocation and fallback, package manager/dependency parsing, private registry detection, container and IaC discovery), used in Step 1.
 - `${CLAUDE_PLUGIN_ROOT}/references/security-scan-capability-map.md`: ecosystem/file-type to scanning-capability lookup, used in Step 9.
+- `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention, used in Step 11.

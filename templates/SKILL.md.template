@@ -17,6 +17,10 @@ Brief statement of what this skill helps with.
 1. ...
 2. ...
 
+## Offer to save (optional, only if this skill produces a full report)
+
+If the output is a full report rather than a short verdict, add a final step that follows the save prompt defined in `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`, and give that file its own canonical filename entry in the table there. Skip this step entirely for verdict-style skills, where the output is a short answer about one specific thing rather than a report worth keeping and diffing over time.
+
 ## Reference material
 
 Point to anything under `../../references/` or `../../scripts/` this skill relies on, e.g.:

@@ -76,7 +76,8 @@ skill-sec-arcade/
 │   ├── language-attack-vectors.md       ── language/runtime -> common attack vector lookup
 │   ├── owasp-top10-cheatsheet-map.md    ── OWASP Top 10:2025 -> Cheat Sheet Series lookup
 │   ├── registry-health-signals.md       ── per-ecosystem registry health signal + OSV lookup
-│   └── security-scan-capability-map.md  ── ecosystem/file-type -> scanning capability lookup
+│   ├── security-scan-capability-map.md  ── ecosystem/file-type -> scanning capability lookup
+│   └── save-states.md                   ── shared "save this report to a file" convention
 ├── templates/
 │   └── SKILL.md.template                ── copy this to scaffold a new skill
 ├── LICENSE
@@ -88,7 +89,7 @@ New skill added? Update this tree and the table above.
 - **`.claude-plugin/`**: the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
 - **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently five cabinets installed: [`player-two-verdict`](skills/player-two-verdict), [`tilt-check`](skills/tilt-check), [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map), [`cartridge-scanner`](skills/cartridge-scanner), and [`dead-weight-detector`](skills/dead-weight-detector) (see table above).
 - **`scripts/`**: helper scripts a `SKILL.md` can shell out to. Currently holds `cartridge-scanner`'s repo inventory script and `dead-weight-detector`'s usage/health scan script.
-- **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `dungeon-crawl-threat-map`'s OWASP Top 10 and language attack-vector lookups, `cartridge-scanner`'s security scan capability map, and `dead-weight-detector`'s registry health signal map.
+- **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `dungeon-crawl-threat-map`'s OWASP Top 10 and language attack-vector lookups, `cartridge-scanner`'s security scan capability map, `dead-weight-detector`'s registry health signal map, and the shared `save-states.md` convention used by every skill that offers to save its report to a file.
 - **`templates/`**: `SKILL.md.template`, the starting point for scaffolding a new skill.
 
 ## Adding a new skill
