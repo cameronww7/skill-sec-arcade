@@ -223,7 +223,7 @@ Findings sharing one root cause (same CWE, rule, or package across several locat
 
 ## Next cabinet
 
-[`tilt-check`](../tilt-check) is the inverse of this skill: once a finding here comes back False Positive, that skill independently re-audits the verdict before it gets trusted.
+[`tilt-check`](../tilt-check) is the inverse of this skill: once a finding here comes back False Positive, that skill independently re-audits the verdict before it gets trusted. When a finding comes back True Positive and you want it actually fixed, not just triaged, that's [`patch-for-the-high-score`](../patch-for-the-high-score) or [`patch-boss-rush`](../patch-boss-rush).
 
 ## License
 

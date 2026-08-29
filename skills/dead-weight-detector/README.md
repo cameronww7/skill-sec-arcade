@@ -174,7 +174,7 @@ supply-chain surface for this.
 
 ## Next cabinet
 
-[`cartridge-scanner`](../cartridge-scanner) is the natural predecessor: it inventories what dependencies exist across a repo, this skill picks up from there and asks whether each one earns its place.
+[`cartridge-scanner`](../cartridge-scanner) is the natural predecessor: it inventories what dependencies exist across a repo, this skill picks up from there and asks whether each one earns its place. When an SCA finding needs an actual patch-vs-upgrade decision, not just a health read, [`patch-for-the-high-score`](../patch-for-the-high-score) reuses this skill's health-check script to make that call.
 
 ## License
 

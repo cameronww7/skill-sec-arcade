@@ -149,6 +149,10 @@ Node/Express payments API used by the mobile app and internal admin tools.
 - Not a substitute for the full report when a human needs to actually review the reasoning behind a finding, this is for quick machine context, not deep understanding.
 - Overwrites the previous `MINI_MAP.md` on every run, it isn't versioned, `git diff` it if you want to see what changed.
 
+## Next cabinet
+
+[`patch-for-the-high-score`](../patch-for-the-high-score) hard-requires this file before it will fix anything, it's the app context that fix plans and blast-radius judgments are built on.
+
 ## License
 
 [CC BY-SA 4.0](../../LICENSE), same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).
