@@ -21,7 +21,7 @@
 A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for AppSec and security engineering. Insert coin, learn a skill, boss fight the vuln.
 
 ![Claude Code Plugin](https://img.shields.io/badge/claude--code-plugin-5A67D8)
-![Skills](https://img.shields.io/badge/skills-5-brightgreen)
+![Skills](https://img.shields.io/badge/skills-6-brightgreen)
 ![Focus](https://img.shields.io/badge/focus-AppSec-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
@@ -43,6 +43,7 @@ No restart, no manual registration. Every skill under `skills/` gets picked up a
 | [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map) | Reads a repo like an AppSec engineer on their first week: maps the architecture, draws an ASCII diagram, and threat models it with STRIDE, mapped to the OWASP Top 10 and Cheat Sheet Series. Teaching tone, not a scan report, built to be kept and reused. | You want a threat model, an attack-surface map, or a security-focused walkthrough of a codebase, not a validation of one specific finding. |
 | [`cartridge-scanner`](skills/cartridge-scanner) | Inventories a repo before any deep scanning starts: language/LOC breakdown (via `scc`), package manager and dependency counts, private/internal registry detection, IaC and container inventory, ending in a tailored, tool-agnostic rundown of what scanning capability the repo needs. | You want a size/dependency/IaC/container inventory, or you're asking "what security tools do I need for this repo." |
 | [`dead-weight-detector`](skills/dead-weight-detector) | Measures how much each direct OSS dependency is actually used in first-party code, cross-references that against live registry health signals (release recency, maintainers, downloads, known unpatched vulnerabilities), and recommends keep, watch, or replace with first-party code. | You want to know if a dependency is worth keeping, or you're asking "should we drop this package and write it ourselves?" |
+| [`mini-map`](skills/mini-map) | Condenses an existing `dungeon-crawl-threat-map` report into a hard-capped, ~50-line context file (overview, auth/SSO/session, hardening, trust boundaries, business logic invariants, known risk areas) other skills can load without reading the whole threat model. | You want a quick, reusable context file before reviewing a finding or planning a remediation, or another skill needs fast background on how this app is protected. |
 
 More cabinets get added as they're built, see [Adding a new skill](#adding-a-new-skill) below.
 
@@ -61,6 +62,9 @@ skill-sec-arcade/
 │   │   ├── SKILL.md
 │   │   └── README.md
 │   ├── dungeon-crawl-threat-map/        ── architecture diagram + STRIDE threat model
+│   │   ├── SKILL.md
+│   │   └── README.md
+│   ├── mini-map/                        ── condenses a threat model into a ~50-line context file
 │   │   ├── SKILL.md
 │   │   └── README.md
 │   ├── player-two-verdict/              ── true/false-positive verdict on one pasted finding
@@ -87,7 +91,7 @@ skill-sec-arcade/
 New skill added? Update this tree and the table above.
 
 - **`.claude-plugin/`**: the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
-- **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently five cabinets installed: [`player-two-verdict`](skills/player-two-verdict), [`tilt-check`](skills/tilt-check), [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map), [`cartridge-scanner`](skills/cartridge-scanner), and [`dead-weight-detector`](skills/dead-weight-detector) (see table above).
+- **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently six cabinets installed: [`player-two-verdict`](skills/player-two-verdict), [`tilt-check`](skills/tilt-check), [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map), [`cartridge-scanner`](skills/cartridge-scanner), [`dead-weight-detector`](skills/dead-weight-detector), and [`mini-map`](skills/mini-map) (see table above).
 - **`scripts/`**: helper scripts a `SKILL.md` can shell out to. Currently holds `cartridge-scanner`'s repo inventory script and `dead-weight-detector`'s usage/health scan script.
 - **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `dungeon-crawl-threat-map`'s OWASP Top 10 and language attack-vector lookups, `cartridge-scanner`'s security scan capability map, `dead-weight-detector`'s registry health signal map, and the shared `save-states.md` convention used by every skill that offers to save its report to a file.
 - **`templates/`**: `SKILL.md.template`, the starting point for scaffolding a new skill.

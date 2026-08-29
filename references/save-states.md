@@ -17,6 +17,7 @@ created at the root of the target repo the first time anything gets saved into i
 | `cartridge-scanner` | `.SEC-Arcade-save_states/CARTRIDGE_SCAN.md` |
 | `dungeon-crawl-threat-map` | `.SEC-Arcade-save_states/THREAT_MODEL.md` |
 | `dead-weight-detector` | `.SEC-Arcade-save_states/DEAD_WEIGHT_REPORT.md` |
+| `mini-map` | `.SEC-Arcade-save_states/MINI_MAP.md` |
 
 A fixed filename, not a timestamped one, is deliberate: overwriting the same path is what lets the user (or a future skill run) `git diff` it against the previous run and see exactly what drifted, new dependencies, a private registry that showed up, a usage tier that changed.
 
@@ -35,3 +36,7 @@ Whether a report is worth committing is a per-run call, not a fixed project poli
 ## The file content
 
 Whatever gets written must be byte-for-byte the same report already shown in the conversation. Don't summarize, trim, or reformat it for the file version.
+
+## Exception: `mini-map`
+
+`mini-map` writes `MINI_MAP.md` directly, with no `AskUserQuestion` prompt. It's the one deliberate exception to the convention above: every other file in this table is a full report a human decides whether to keep, `MINI_MAP.md` is a condensed context file written for other skills to load automatically, prompting on every run would just be friction against its own purpose.

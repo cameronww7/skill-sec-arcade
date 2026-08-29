@@ -199,6 +199,10 @@ For a large monorepo, the skill will ask you to scope to a specific service or d
 - A point-in-time snapshot. It reflects the code as it stands when run, not runtime behavior, deployed configuration, or infrastructure the repo doesn't describe.
 - Depth scales with repo size. For a very large or unfamiliar codebase, scope it to one service at a time for a report that's actually useful rather than too dense to act on.
 
+## Next cabinet
+
+Once a threat model exists, [`mini-map`](../mini-map) condenses it into a ~50-line context file other skills can load quickly, no need to reload this whole report every time something needs a reminder of how this app is protected.
+
 ## License
 
 [CC BY-SA 4.0](../../LICENSE), same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).

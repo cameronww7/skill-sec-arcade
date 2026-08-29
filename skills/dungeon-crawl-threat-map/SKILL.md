@@ -71,12 +71,13 @@ Before the deep STRIDE dive, run a fast, targeted scan for specific patterns wor
 
 This list doesn't need to avoid overlap with the STRIDE section that follows. An item can appear here as a quick flag and also get a full STRIDE writeup later, when that happens, point back to it ("see Threats (STRIDE) → [component]") instead of repeating the reasoning. Not everything here needs to graduate to a full STRIDE threat either, some things are worth a look without full treatment, e.g. a hardcoded value in a test fixture.
 
-Four categories. Only populate one when something genuinely notable turns up, skip a category, or the whole section, rather than forcing filler entries just to look thorough:
+Five categories. Only populate one when something genuinely notable turns up, skip a category, or the whole section, rather than forcing filler entries just to look thorough:
 
-- **Authentication**: for entry points from Step 1, flag anything that looks off, this is not a full per-route inventory. An endpoint that looks like it should require auth but has no visible auth middleware/decorator/guard in its chain; inconsistent auth across near-identical routes (some protected, some not); auth that's only checked client-side; a route whose name or behavior implies privilege (admin, delete, export, internal) with no visible protection.
+- **Authentication**: for entry points from Step 1, flag anything that looks off, this is not a full per-route inventory. An endpoint that looks like it should require auth but has no visible auth middleware/decorator/guard in its chain; inconsistent auth across near-identical routes (some protected, some not); auth that's only checked client-side; a route whose name or behavior implies privilege (admin, delete, export, internal) with no visible protection; session/token lifecycle problems, no token expiration, no session invalidation on logout or password change, refresh-token reuse with no rotation or revocation.
 - **Cryptography**: weak or broken algorithms (MD5, SHA-1, DES, ECB mode) used anywhere security-relevant, password hashing, token signing, encryption; hardcoded keys, secrets, salts, or IVs in source; a non-cryptographic random source (`Math.random()`, `rand()`) used for anything security-sensitive, tokens, session IDs, reset codes; homegrown crypto instead of a vetted library; disabled or overridden TLS/certificate validation.
-- **Access Control**: an authorization check that's assumed rather than enforced, a role read from a client-supplied field, an admin action gated only by hiding a UI element instead of a server-side check; object-level checks missing where a user-supplied ID fetches or modifies a record with no ownership or tenant check (IDOR-shaped code); authorization logic duplicated inconsistently across handlers instead of centralized.
-- **Other**: an open catch-all for anything else worth a second look that doesn't fit the three buckets above, e.g. dangerous deserialization, `eval`-like dynamic execution of external input, debug or test endpoints and feature flags left enabled, verbose error output that could leak internals.
+- **Access Control**: an authorization check that's assumed rather than enforced, a role read from a client-supplied field, an admin action gated only by hiding a UI element instead of a server-side check; object-level checks missing where a user-supplied ID fetches or modifies a record with no ownership or tenant check (IDOR-shaped code); authorization logic duplicated inconsistently across handlers instead of centralized; a permission or auth check that fails open, defaulting to allow if the check itself errors, times out, or can't reach a dependency.
+- **Business Logic Abuse**: race conditions on state-changing endpoints, a TOCTOU gap on a balance or inventory check; workflow-bypass, a multi-step process where a later step's endpoint can be hit directly, skipping validation an earlier step was supposed to enforce; price, quantity, or other parameter manipulation via client-controlled values trusted server-side.
+- **Other**: an open catch-all for anything else worth a second look that doesn't fit the four buckets above, e.g. dangerous deserialization, `eval`-like dynamic execution of external input, debug or test endpoints and feature flags left enabled, verbose error output that could leak internals, webhook handlers with no signature/HMAC verification that treat an inbound callback payload as trusted, server-side fetches of a user-controlled URL with no allowlist or egress restriction (SSRF), or credentials/API keys/tokens appearing in log statements, error messages, or client-shipped bundles/source maps.
 
 Each entry gets a `file:line` and function/symbol citation, one to two sentences max, phrased as a nudge to go look rather than a fully reasoned verdict, e.g. "Check this out: `/admin/export` has no auth guard in its handler chain, unlike every other `/admin/*` route in this file." No Likelihood/Impact rating here, that reasoning belongs to Step 8.
 
@@ -168,6 +169,9 @@ dropping the section silently.]
 
 ### Access Control
 - 🚪 `path/file.ext:line`, `functionOrSymbolName()`: [what's notable, 1-2 sentences]
+
+### Business Logic Abuse
+- ⚖️ `path/file.ext:line`, `functionOrSymbolName()`: [what's notable, 1-2 sentences]
 
 ### Other
 - 🔎 `path/file.ext:line`, `functionOrSymbolName()`: [what's notable, 1-2 sentences]
