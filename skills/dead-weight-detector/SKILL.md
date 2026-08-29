@@ -3,20 +3,6 @@ name: dead-weight-detector
 description: Analyze how much each direct OSS dependency is actually used in first-party code, cross-reference that against live maintenance-health signals from the package's own registry (release recency, maintainer count, download volume, known unpatched vulnerabilities), and recommend keep vs. replace with first-party code. Trigger this whenever the user asks "is this dependency worth keeping," "should we drop this package," "audit our dependencies," "which OSS packages are barely used," "should we inline this instead of using a dependency," "is X well maintained," or wants a dependency health check. Requires live network access for the health-check phase, unlike this plugin's other skills.
 ---
 
-```
- _____  _______ _______ _____    ________ _______ _______ _______ _______ _______ 
-|     \|    ___|   _   |     \  |  |  |  |    ___|_     _|     __|   |   |_     _|
-|  --  |    ___|       |  --  | |  |  |  |    ___|_|   |_|    |  |       | |   |  
-|_____/|_______|___|___|_____/  |________|_______|_______|_______|___|___| |___|  
-
- _____  _______ _______ _______ ______ _______ _______ ______ 
-|     \|    ___|_     _|    ___|      |_     _|       |   __ \
-|  --  |    ___| |   | |    ___|   ---| |   | |   -   |      <
-|_____/|_______| |___| |_______|______| |___| |_______|___|__|
-```
-
-*Accent: Anchor Grey. The color of ballast you're not sure is still worth carrying.*
-
 # Dead Weight Detector
 
 ## Why this skill exists

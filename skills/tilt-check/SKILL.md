@@ -3,16 +3,6 @@ name: tilt-check
 description: Independently re-investigate a finding that has already been marked a False Positive, by an AI triage agent, another analyst, or an automated tool, to check whether that verdict actually holds up. Treats the FP call and its justification as an unverified claim, not fact, and actively hunts for a reason the finding is still exploitable before agreeing to close it out. Trigger this whenever the user pastes a False Positive verdict, a suppression justification, a "not applicable" or "won't fix" ticket comment, asks to double-check, audit, sanity-check, or second-guess an AI triage result, or asks "are we sure this is actually a false positive?"
 ---
 
-```
- _____ ___ _   _____    ____ _   _ _____ ____ _  __
-|_   _|_ _| | |_   _|  / ___| | | | ____/ ___| |/ /
-  | |  | || |   | |   | |   | |_| |  _|| |   | ' / 
-  | |  | || |___| |   | |___|  _  | |__| |___| . \ 
-  |_| |___|_____|_|    \____|_| |_|_____\____|_|\_\
-```
-
-*Accent: Tilt Amber. The warning light that flashes when someone shakes the cabinet.*
-
 # Tilt Check
 
 ## Why this skill exists

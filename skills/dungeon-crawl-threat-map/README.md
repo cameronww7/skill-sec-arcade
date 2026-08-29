@@ -84,7 +84,7 @@ Point it at a repo, get back:
     ┌──────────────────────────────────────────┐
     │ 5-7. Threat model                        │
     │ STRIDE per component/boundary  ->        │
-    │ OWASP Top 10 + Cheat Sheet tags ->        │
+    │ OWASP Top 10 + Cheat Sheet tags ->       │
     │ language-specific vectors                │
     └──────────────────────────────────────────┘
                           │

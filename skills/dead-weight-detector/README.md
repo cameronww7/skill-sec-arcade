@@ -40,52 +40,52 @@ Run it, get back:
 
 ```
     ┌──────────────────────────────────────────┐
-    │ "Should we drop this dependency?"         │
+    │ "Should we drop this dependency?"        │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 1. Run dead_weight_scan.py usage          │
-    │ local only, no network, all 9 ecosystems  │
-    │ -> files, call sites, usage tier per dep  │
+    │ 1. Run dead_weight_scan.py usage         │
+    │ local only, no network, all 9 ecosystems │
+    │ -> files, call sites, usage tier per dep │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 2. Full usage-tier table                  │
-    │ every direct dependency gets a row        │
+    │ 2. Full usage-tier table                 │
+    │ every direct dependency gets a row       │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 3. Triage the deep-dive set                │
-    │ minimal/light tier, capped at 15,         │
-    │ + anything the user named directly        │
+    │ 3. Triage the deep-dive set              │
+    │ minimal/light tier, capped at 15,        │
+    │ + anything the user named directly       │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 4-5. Read call sites + live health check   │
-    │ recency, maintainers, downloads,          │
-    │ version-scoped OSV vulnerability check    │
+    │ 4-5. Read call sites + live health check │
+    │ recency, maintainers, downloads,         │
+    │ version-scoped OSV vulnerability check   │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 6. Judge replacement complexity           │
-    │ trivial to hand-roll, or not worth it     │
+    │ 6. Judge replacement complexity          │
+    │ trivial to hand-roll, or not worth it    │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 7. Final verdict                          │
-    │ KEEP / CANDIDATE TO INLINE /              │
-    │ KEEP BUT WATCH / NEEDS HUMAN JUDGMENT     │
+    │ 7. Final verdict                         │
+    │ KEEP / CANDIDATE TO INLINE /             │
+    │ KEEP BUT WATCH / NEEDS HUMAN JUDGMENT    │
     └──────────────────────────────────────────┘
                           │
                           ▼
     ┌──────────────────────────────────────────┐
-    │ 8-9. Write the report, offer to save      │
+    │ 8-9. Write the report, offer to save     │
     └──────────────────────────────────────────┘
 ```
 

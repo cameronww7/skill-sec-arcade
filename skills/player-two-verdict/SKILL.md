@@ -3,24 +3,6 @@ name: player-two-verdict
 description: Independently investigate a pasted security scanner finding (SAST, SCA, Secrets, IaC, or DAST) to determine if it's a true or false positive, using actual repo access rather than trusting the tool's verdict. Trigger this whenever the user pastes a security finding, vulnerability report, CVE, CWE, scanner output, or asks to triage, validate, review, or challenge a security finding. Also trigger on requests like "is this a real vulnerability" or "help me figure out if I can suppress this finding."
 ---
 
-```
- _____  _           __     ________ _____    _________          ______  
-|  __ \| |        /\\ \   / /  ____|  __ \  |__   __\ \        / / __ \ 
-| |__) | |       /  \\ \_/ /| |__  | |__) |    | |   \ \  /\  / / |  | |
-|  ___/| |      / /\ \\   / |  __| |  _  /     | |    \ \/  \/ /| |  | |
-| |    | |____ / ____ \| |  | |____| | \ \     | |     \  /\  / | |__| |
-|_|    |______/_/    \_\_|  |______|_|  \_\    |_|      \/  \/   \____/ 
-
-__      ________ _____  _____ _____ _____ _______ 
-\ \    / /  ____|  __ \|  __ \_   _/ ____|__   __|
- \ \  / /| |__  | |__) | |  | || || |       | |   
-  \ \/ / |  __| |  _  /| |  | || || |       | |   
-   \  /  | |____| | \ \| |__| || || |____   | |   
-    \/   |______|_|  \_\_____/_____\_____|  |_|   
-```
-
-*Accent: Player Two Blue. Classic arcade convention, Player One is red, Player Two checks the call.*
-
 # Player Two Verdict
 
 ## Why this skill exists
