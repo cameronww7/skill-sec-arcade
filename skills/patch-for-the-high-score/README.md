@@ -114,7 +114,7 @@ git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-
 cp -r /tmp/sec-arcade/skills/patch-for-the-high-score ~/.claude/skills/
 ```
 
-Note: standalone installs also need `player-two-verdict`, `mini-map`, `dead-weight-detector` (and its `scripts/dead_weight_scan.py`), and `references/{owasp-top10-cheatsheet-map,registry-health-signals,save-states}.md`, this skill relies on all of them. Installing the whole arcade (Option 1) avoids having to assemble that list by hand.
+Note: standalone installs also need `player-two-verdict`, `mini-map`, `dead-weight-detector` (and its `scripts/dead_weight_scan.py`), and `references/{owasp-cheat-sheet-series,registry-health-signals,save-states}.md`, this skill relies on all of them. Installing the whole arcade (Option 1) avoids having to assemble that list by hand.
 
 ## Usage
 

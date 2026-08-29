@@ -100,7 +100,7 @@ git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-
 cp -r /tmp/sec-arcade/skills/patch-boss-rush ~/.claude/skills/
 ```
 
-Note: this skill only reads `references/owasp-top10-cheatsheet-map.md` as an optional advisory lookup, nothing else in the arcade. If installing standalone, copy that one file alongside it if you want the OWASP-guidance step to work.
+Note: this skill only reads `references/owasp-cheat-sheet-series.md` as an optional advisory lookup, nothing else in the arcade. If installing standalone, copy that one file alongside it if you want the OWASP-guidance step to work.
 
 ## Usage
 

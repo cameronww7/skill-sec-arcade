@@ -50,7 +50,7 @@ If Step 3 found a live credential, the very first line of output, before anythin
 
 Only if Step 3 didn't already rule the finding out.
 
-- **Check OWASP guidance as an input, not a gate**: check whether `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md` has a page relevant to this finding. Advisory, always worth a look, never blocking. If something fits, let it shape the fix and name the sheet in the plan. If nothing fits, move on without forcing it.
+- **Check OWASP guidance as an input, not a gate**: check whether `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`, the full 120-sheet OWASP Cheat Sheet Series catalog, has a sheet relevant to this finding's specific topic. Match directly on the vulnerability or technology involved (a JWT finding matches the JSON Web Token Cheat Sheet, an SSRF finding matches Server-Side Request Forgery Prevention), not through an OWASP Top 10 category. Advisory, always worth a look, never blocking. If something fits, let it shape the fix and name the sheet in the plan. If nothing fits, move on without forcing it.
 - **Complexity gate**: trivial means a few lines, at most 2 files, no schema/API changes, a clear blast radius. If it touches more than 2 files, requires a schema/API change, or has an unclear blast radius, stop: call `EnterPlanMode` and work it out with the user through Claude Code's normal plan-mode workflow instead of the fast path below. Say plainly which condition tripped the gate.
 - **Trivial path**: write the fix plan, max 6 sentences, plain language a junior engineer could follow, no unexplained jargon. Present it, then `AskUserQuestion` (proceed / don't fix). Only touch a file after explicit approval.
 
@@ -108,4 +108,4 @@ Diff:
 
 ## Reference material
 
-- `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md`: OWASP Top 10 → Cheat Sheet Series lookup, used in Step 4 as advisory input on the fix approach. This is the only shared reference this skill uses, it's a static lookup table, not another skill's behavior or artifact.
+- `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`: the full OWASP Cheat Sheet Series catalog, used in Step 4 as advisory input on the fix approach. This is the only shared reference this skill uses, it's a static lookup table, not another skill's behavior or artifact.

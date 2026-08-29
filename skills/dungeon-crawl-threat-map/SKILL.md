@@ -96,7 +96,9 @@ For each applicable threat: name the component or boundary it applies to, cite t
 
 ## Step 6: Map to OWASP Top 10 and the Cheat Sheet Series
 
-For threats that are web-application-relevant, tag the matching OWASP Top 10:2025 category and name the specific Cheat Sheet Series sheet(s) that give remediation guidance, using `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md` as the lookup. Don't tag every threat with a category, force-fitting a category onto something that doesn't fit teaches the wrong lesson. Skip this step's tagging for threats that are genuinely outside the Top 10's scope (e.g. a pure CLI tool with no web-facing surface still gets STRIDE, just not OWASP tags).
+For threats that are web-application-relevant, tag the matching OWASP Top 10:2025 category and name the specific Cheat Sheet Series sheet(s) that give remediation guidance, using `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md` as the lookup. Don't tag every threat with a category, force-fitting a category onto something that doesn't fit teaches the wrong lesson.
+
+If a threat doesn't fit any of the 10 categories but is still a specific, well-known vulnerability class (GraphQL, WebSocket, JWT, gRPC, and similar have their own sheets but no Top 10 category of their own), check `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`, the full 120-sheet catalog, directly by topic before giving up on a citation. Cite the sheet without an OWASP Top 10 tag in that case, the category tag and the cheat sheet citation are independent, a threat can get one without the other. Only skip the citation entirely when nothing in the full catalog is a genuine match either (e.g. a pure CLI tool with no web-facing surface still gets STRIDE, just no OWASP tag or cheat sheet).
 
 ### A06:2025 Insecure Design gets special weight here
 
@@ -215,5 +217,6 @@ After producing the report, follow the save prompt defined in `${CLAUDE_PLUGIN_R
 ## Reference material
 
 - `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md`: OWASP Top 10:2025 categories mapped to relevant Cheat Sheet Series sheets, used in Step 6.
+- `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`: the full OWASP Cheat Sheet Series catalog, used in Step 6 as a fallback direct lookup for threats outside the Top 10's 10 categories.
 - `${CLAUDE_PLUGIN_ROOT}/references/language-attack-vectors.md`: language/runtime to common attack vector lookup, used in Step 7.
 - `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention, used in Step 10.

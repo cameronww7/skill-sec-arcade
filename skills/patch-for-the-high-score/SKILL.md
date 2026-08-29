@@ -66,7 +66,7 @@ Once a dependency finding is confirmed genuine and reachable:
 
 Only for **GENUINE — FIX NOW** outcomes, this includes the code-side half of a secrets finding and either path of the SCA patch-vs-upgrade decision.
 
-- **Check OWASP guidance as an input, not a gate**: before drafting the plan, check whether `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md` (the same lookup `dungeon-crawl-threat-map` uses) has a page relevant to this finding. Always worth checking, never blocking. If something relevant exists, let it shape the actual fix approach, the right pattern, not just whatever satisfies the scanner, and name the sheet in the fix plan for further reading. If nothing genuinely matches (most IaC misconfigurations, a plain dependency bump), say nothing and move on, don't force a citation that doesn't fit.
+- **Check OWASP guidance as an input, not a gate**: before drafting the plan, check whether `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`, the full 120-sheet OWASP Cheat Sheet Series catalog, has a sheet relevant to this finding's specific topic. Match directly on the vulnerability or technology involved (a JWT finding matches the JSON Web Token Cheat Sheet, an SSRF finding matches Server-Side Request Forgery Prevention, a hardcoded secret matches Secrets Management), don't route through an OWASP Top 10 category first, that's a different, narrower lookup `dungeon-crawl-threat-map` uses for its own purposes, not this one. Always worth checking, never blocking. If something relevant exists, let it shape the actual fix approach, the right pattern, not just whatever satisfies the scanner, and name the sheet in the fix plan for further reading. If nothing genuinely matches (most IaC misconfigurations, a plain dependency bump), say nothing and move on, don't force a citation that doesn't fit.
 - **Complexity gate**: trivial means a few lines, touching at most 2 files, no schema or API changes, a clear blast radius. If **any** of the following hold, touches more than 2 files, requires a schema/API change, or has an unclear blast radius, stop before writing a quick plan. Call `EnterPlanMode` and work the fix out with the user through Claude Code's normal plan-mode workflow instead of the fast path below. State plainly which condition tripped the gate.
 - **Trivial path**: write a fix plan, max 6 sentences, plain language a junior engineer could follow end to end, no unexplained jargon. Present it, then use `AskUserQuestion` (proceed / don't fix). Only touch a file after explicit approval.
 
@@ -132,7 +132,7 @@ Diff:
 
 ## Reference material
 
-- `${CLAUDE_PLUGIN_ROOT}/references/owasp-top10-cheatsheet-map.md`: OWASP Top 10 → Cheat Sheet Series lookup, used in Step 4 to shape the fix approach.
+- `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`: the full OWASP Cheat Sheet Series catalog, used in Step 4 as a direct topic lookup to shape the fix approach.
 - `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md`: health-tier thresholds, used in Step 3's SCA patch-vs-upgrade decision.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py`: the `health` subcommand, reused as-is in Step 3.
 - `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the `.SEC-Arcade-save_states/` folder convention Step 1's context gate depends on.

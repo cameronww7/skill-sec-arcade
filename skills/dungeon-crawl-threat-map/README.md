@@ -141,7 +141,7 @@ mkdir -p .claude/skills
 cp -r /tmp/sec-arcade/skills/dungeon-crawl-threat-map .claude/skills/
 ```
 
-Note: if installing standalone (not via the whole plugin), also copy `references/owasp-top10-cheatsheet-map.md` and `references/language-attack-vectors.md` from the arcade repo alongside it, the skill points at them by relative path.
+Note: if installing standalone (not via the whole plugin), also copy `references/owasp-top10-cheatsheet-map.md`, `references/owasp-cheat-sheet-series.md`, and `references/language-attack-vectors.md` from the arcade repo alongside it, the skill points at them by relative path.
 
 Claude Code picks up skills from either location automatically, no restart or manual registration required.
 
