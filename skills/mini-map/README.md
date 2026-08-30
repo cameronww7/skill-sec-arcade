@@ -92,13 +92,15 @@ This skill ships as part of the [`sec-arcade`](https://github.com/cameronww7/ski
 # personal, applies in every project
 git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
 cp -r /tmp/sec-arcade/skills/mini-map ~/.claude/skills/
+mkdir -p ~/.claude/sec-arcade-standalone
+cp -r /tmp/sec-arcade/references ~/.claude/sec-arcade-standalone/
 
 # project-level, this repo only
 mkdir -p .claude/skills
 cp -r /tmp/sec-arcade/skills/mini-map .claude/skills/
 ```
 
-Note: if installing standalone, also copy `references/save-states.md` from the arcade repo alongside it, and copy [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map) too, this skill depends on its output.
+Note: if installing standalone, also copy `references/save-states.md` from the arcade repo per the command above, and copy [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map) too, this skill depends on its output. `SKILL.md` points at `references/save-states.md` via `${CLAUDE_PLUGIN_ROOT}/references/...`, an environment variable only set automatically for a full plugin install. For this standalone copy to work, set it yourself before launching Claude Code, e.g. add `export CLAUDE_PLUGIN_ROOT=~/.claude/sec-arcade-standalone` to your shell profile.
 
 ## Usage
 

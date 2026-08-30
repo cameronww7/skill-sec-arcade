@@ -115,14 +115,15 @@ You get this skill plus every other skill added to the arcade over time.
 # personal, applies in every project
 git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
 cp -r /tmp/sec-arcade/skills/dead-weight-detector ~/.claude/skills/
-cp /tmp/sec-arcade/scripts/cartridge_scan.py /tmp/sec-arcade/scripts/dead_weight_scan.py ~/.claude/skills/dead-weight-detector/  # or adjust ${CLAUDE_PLUGIN_ROOT} paths in SKILL.md
+mkdir -p ~/.claude/sec-arcade-standalone
+cp -r /tmp/sec-arcade/scripts ~/.claude/sec-arcade-standalone/
 
 # project-level, this repo only
 mkdir -p .claude/skills
 cp -r /tmp/sec-arcade/skills/dead-weight-detector .claude/skills/
 ```
 
-`dead_weight_scan.py` imports helper functions from `cartridge_scan.py` at the module level, both need to be reachable from wherever `SKILL.md`'s `${CLAUDE_PLUGIN_ROOT}` resolves to. Installing the whole arcade (Option 1) handles this automatically.
+`dead_weight_scan.py` imports helper functions from `cartridge_scan.py` at the module level, so both must stay in the same directory, copying the whole `scripts/` folder above (not the individual files) keeps that intact. `SKILL.md` also references both scripts via `${CLAUDE_PLUGIN_ROOT}/scripts/...`, an environment variable Claude Code only sets automatically for a full plugin install. For this standalone copy to work, set it yourself before launching Claude Code, e.g. add `export CLAUDE_PLUGIN_ROOT=~/.claude/sec-arcade-standalone` to your shell profile. Installing the whole arcade (Option 1) handles all of this automatically.
 
 ## Usage
 

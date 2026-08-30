@@ -19,6 +19,8 @@ Not every finding needs the full ceremony. A single obvious SQL injection in one
 
 If the finding is genuinely complex, touches security-sensitive business logic, or the user wants dependency staleness/tech-debt considered as part of an SCA fix, that's [`patch-for-the-high-score`](../patch-for-the-high-score) instead, it loads real app context and dependency health data before deciding.
 
+On a bare "fix this" with no urgency/speed signal either way, default to `patch-for-the-high-score`, the safer, context-loaded path. Only take this skill when the request itself signals speed ("quick," "just," "rush") or explicitly opts out of the full workflow.
+
 ## Step 1: Parse & smoke test
 
 Extract from whatever's pasted: tool name, rule ID, CWE/CVE, reported severity, file/line or package/version, code snippet, secret type/location, resource/template path. If a critical field like a line number is missing, find it yourself with grep or search rather than asking. If a bare CVE/CWE ID has no real description attached, web search it before going further, you need to know what the vulnerability actually is.
@@ -40,7 +42,7 @@ One short pass, not an exhaustive trace. The goal is the same as anywhere else i
 - **Secrets**: is this a live credential, or a placeholder/example/test fixture.
 - **IaC**: what's the actual effective configuration for the flagged resource, not just what the raw template shows.
 
-If this turns up a clear, specific reason the finding isn't real, say so plainly and stop. Evidence-cited, same as everywhere else in this plugin, just without a five-level confidence scale, state a plain confidence word (High / Medium / Low) if it's not obvious.
+If this turns up a clear, specific reason the finding isn't real, say so plainly and stop. Evidence-cited, same as everywhere else in this plugin, just without a five-level confidence scale: always state a plain confidence word (High / Medium / Low) in the output header, not just when it's non-obvious.
 
 ### Secrets fast path
 

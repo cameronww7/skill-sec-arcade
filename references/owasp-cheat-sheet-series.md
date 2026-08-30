@@ -1,5 +1,7 @@
 # OWASP Cheat Sheet Series (full catalog)
 
+Last verified: 2026-08-30, against the live index cited in "Notes on accuracy" below. This is a hand-curated snapshot of an actively maintained external source, if OWASP has added, renamed, or deprecated sheets since this date, re-check against the live index before trusting a citation blind.
+
 This is the complete OWASP Cheat Sheet Series, 120 sheets, each a practical, actionable guide for a specific vulnerability class or technology. Use this for a direct topic/keyword match against a specific finding: a JWT finding matches the JSON Web Token Cheat Sheet directly, an SSRF finding matches Server-Side Request Forgery Prevention directly, a hardcoded secret matches Secrets Management directly. No routing through a category required.
 
 This is a different file from `owasp-top10-cheatsheet-map.md`. That one is a narrow, 10-row lookup keyed to the OWASP **Web Application** Top 10:2025 categories specifically, used only by `dungeon-crawl-threat-map` to tag a STRIDE threat with a Top 10 category. This file is the complete series, meant for any skill that needs to find the single most relevant remediation guide for a specific vulnerability, not a category.

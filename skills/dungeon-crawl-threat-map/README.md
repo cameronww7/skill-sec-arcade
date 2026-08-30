@@ -135,13 +135,15 @@ Copy this folder into your personal or project skills directory:
 # personal, applies in every project
 git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
 cp -r /tmp/sec-arcade/skills/dungeon-crawl-threat-map ~/.claude/skills/
+mkdir -p ~/.claude/sec-arcade-standalone
+cp -r /tmp/sec-arcade/references ~/.claude/sec-arcade-standalone/
 
 # project-level, this repo only
 mkdir -p .claude/skills
 cp -r /tmp/sec-arcade/skills/dungeon-crawl-threat-map .claude/skills/
 ```
 
-Note: if installing standalone (not via the whole plugin), also copy `references/owasp-top10-cheatsheet-map.md`, `references/owasp-cheat-sheet-series.md`, and `references/language-attack-vectors.md` from the arcade repo alongside it, the skill points at them by relative path.
+Note: if installing standalone (not via the whole plugin), also copy `references/owasp-top10-cheatsheet-map.md`, `references/owasp-cheat-sheet-series.md`, and `references/language-attack-vectors.md` from the arcade repo, per the command above. `SKILL.md` points at them via `${CLAUDE_PLUGIN_ROOT}/references/...`, not a relative path, and that variable is only set automatically for a full plugin install. For this standalone copy to work, set it yourself before launching Claude Code, e.g. add `export CLAUDE_PLUGIN_ROOT=~/.claude/sec-arcade-standalone` to your shell profile.
 
 Claude Code picks up skills from either location automatically, no restart or manual registration required.
 

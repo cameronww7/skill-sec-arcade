@@ -74,7 +74,7 @@ Private registry findings already got their own dedicated step (Step 5), don't r
 
 ## Step 9: Scanning coverage recommendations
 
-Using `${CLAUDE_PLUGIN_ROOT}/references/security-scan-capability-map.md`, pull only the rows that match what was actually found in Steps 2-7. Frame every line as a capability gap, not a product pick: "no SCA coverage confirmed for the npm dependency tree," not "install X." **Never name a specific tool or vendor in this section**, that's a deliberate project-wide choice, not an oversight, the point is to tell the reader what capability they're missing, not what to buy.
+Using `${CLAUDE_PLUGIN_ROOT}/references/security-scan-capability-map.md`, pull the rows that match what was actually found in Steps 2-7, plus the Secrets and SBOM rows, which apply unconditionally to any repo regardless of what else was found. Frame every line as a capability gap, not a product pick: "no SCA coverage confirmed for the npm dependency tree," not "install X." **Never name a specific tool or vendor in this section**, that's a deliberate project-wide choice, not an oversight, the point is to tell the reader what capability they're missing, not what to buy.
 
 When an ecosystem was flagged in Step 5, its SCA row here explicitly repeats the caveat: the coverage recommendation only holds if the tool can actually reach and authenticate to that private registry.
 

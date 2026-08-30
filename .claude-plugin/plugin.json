@@ -1,5 +1,6 @@
 {
   "name": "sec-arcade",
+  "version": "1.0.0",
   "description": "A leveling-up arcade of Claude Code skills for AppSec and security engineering.",
   "author": {
     "name": "TryHard3r"

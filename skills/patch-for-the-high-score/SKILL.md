@@ -23,9 +23,13 @@ The outcomes here are not symmetric. Investigating a finding and drafting a fix 
 
 If the user wants speed over ceremony on a finding that's probably simple, that's [`patch-boss-rush`](../patch-boss-rush) instead, it does its own lightweight version of this without loading any other skill's artifacts.
 
+On a bare "fix this" with no urgency/speed signal either way, this is the default: the safer, context-loaded path.
+
 ## Step 1: Setup & intake
 
-Parse whatever's pasted the same way [`player-two-verdict`](../player-two-verdict) does in its own Step 1: tool name, rule ID, CWE/CVE, reported severity, file/line or package/version, code snippet, secret type/location, resource/template path. Self-resolve a missing critical field via grep/search rather than asking the user, only ask when the repo genuinely can't resolve it. Web search a bare CVE/CWE ID with no real description before investigating further.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/player-two-verdict/SKILL.md` in full before proceeding, specifically its Steps 1, 3, and 4. This step reuses that skill's parsing and per-finding-type investigation checklists directly, not a paraphrase of them from memory, load the actual file even if `player-two-verdict` already ran earlier in this session.
+
+Parse whatever's pasted per that Step 1: tool name, rule ID, CWE/CVE, reported severity, file/line or package/version, code snippet, secret type/location, resource/template path. Self-resolve a missing critical field via grep/search rather than asking the user, only ask when the repo genuinely can't resolve it. Web search a bare CVE/CWE ID with no real description before investigating further.
 
 **Smoke test**: confirm this is a git repo (`git rev-parse --show-toplevel`), confirm the current branch (`git branch --show-current`), confirm any file path the finding names actually exists in this working tree. If the finding references a repo or branch that doesn't match what's checked out, stop and ask before continuing, don't guess and don't proceed against the wrong tree.
 
@@ -41,7 +45,7 @@ Every finding lands in exactly one of three buckets, each driving a different pa
 
 ## Step 3: Analyze & decide
 
-Investigate using the same methodology as `player-two-verdict`'s Steps 1, 3, and 4: the per-finding-type checklist (SAST/SCA/Secrets/IaC/DAST reachability and evidence gathering) and the same five-level confidence scale (Very High, High, Medium, Low, Very Low, never a coarser 3-tier scale). Work silently, no narration of intermediate steps.
+Investigate using the per-finding-type checklist (SAST/SCA/Secrets/IaC/DAST reachability and evidence gathering) from `player-two-verdict/SKILL.md` Steps 1, 3, and 4, loaded in Step 1 above, and the same five-level confidence scale (Very High, High, Medium, Low, Very Low, never a coarser 3-tier scale). Work silently, no narration of intermediate steps.
 
 Three possible outcomes:
 
@@ -132,6 +136,7 @@ Diff:
 
 ## Reference material
 
+- `${CLAUDE_PLUGIN_ROOT}/skills/player-two-verdict/SKILL.md`: Steps 1, 3, and 4, read in full in Step 1 and reused directly for parsing and per-finding-type investigation.
 - `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`: the full OWASP Cheat Sheet Series catalog, used in Step 4 as a direct topic lookup to shape the fix approach.
 - `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md`: health-tier thresholds, used in Step 3's SCA patch-vs-upgrade decision.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py`: the `health` subcommand, reused as-is in Step 3.

@@ -25,13 +25,13 @@ If the user instead pastes a raw, untriaged scanner finding with no verdict atta
 
 This skill's entire value depends on reaching its own conclusion, not on confirming one that's already sitting in the conversation. If the original FP verdict was produced earlier in this same session (for example by [`player-two-verdict`](../player-two-verdict) running right before this), or if the user has been discussing the finding with you before pasting the verdict, your own read of it is already anchored to that reasoning. Running the "independent" audit in that same context isn't independent, it's the same judgment re-reading its own homework and agreeing with itself.
 
-Do not perform Steps 2-6 yourself in this conversation. Before anything else, delegate the entire audit to a fresh subagent, one that starts with no memory of this conversation, not a fork or continuation of it. Give that subagent nothing but:
+Do not perform Steps 2-6 yourself in this conversation. Before anything else, delegate the entire audit to a fresh subagent, one that starts with no memory of this conversation, not a fork or continuation of it. If an `Agent`-style tool is available, use it with a fresh `subagent_type` (e.g. `general-purpose`), explicitly not a `fork` type or any option documented as inheriting the caller's context, since a fork's entire premise is shared memory with this conversation, which defeats the isolation this step exists to guarantee. Give that subagent nothing but:
 
 - The raw pasted material exactly as the user provided it: the original finding, the FP verdict, and its justification.
 - The repo location/access it needs to investigate.
 - The full instructions in Steps 2-6 below.
 
-Do not pass along your own read of the finding, anything said earlier in this session about it, or any hint of what verdict a prior review (yours or anyone else's) reached. The subagent's conclusion has to come from the raw material and the repo alone, or the isolation is theater. Spawn a genuinely fresh, non-forked subagent for this, not a `fork`-style agent that inherits your context, the whole point is that it does not share what you already know.
+Do not pass along your own read of the finding, anything said earlier in this session about it, or any hint of what verdict a prior review (yours or anyone else's) reached. The subagent's conclusion has to come from the raw material and the repo alone, or the isolation is theater.
 
 Wait for the subagent to finish, then relay its finished output back to the user as-is. Don't edit its verdict, soften it, add commentary on top of it, or skip the delegation because the case looks obvious from where you're sitting, that instinct is exactly the failure mode this skill exists to catch.
 

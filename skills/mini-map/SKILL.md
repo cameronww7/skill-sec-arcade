@@ -45,6 +45,8 @@ Pull from specific sections of the source, don't re-derive anything from the rep
 
 No citations needed, this is a summary artifact for machine consumption, not an evidence-cited report.
 
+If `THREAT_MODEL.md` doesn't have the expected section headers (hand-edited, or produced by something other than `dungeon-crawl-threat-map`), don't fail silently and don't guess. Condense whatever sections do exist using the same mapping logic, note in the Overview which of the six target sections had no matching source material, and skip that target section rather than inventing content for it.
+
 ## Step 4: Enforce the 50-line cap
 
 Count lines in the draft, including headers and blank lines. If over 50, trim in this order, stop as soon as it fits:

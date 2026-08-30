@@ -120,14 +120,17 @@ You get this skill plus every other skill added to the arcade over time.
 # personal, applies in every project
 git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
 cp -r /tmp/sec-arcade/skills/cartridge-scanner ~/.claude/skills/
-cp -r /tmp/sec-arcade/scripts ~/.claude/skills/cartridge-scanner-scripts   # or adjust ${CLAUDE_PLUGIN_ROOT} paths in SKILL.md
+mkdir -p ~/.claude/sec-arcade-standalone
+cp -r /tmp/sec-arcade/scripts ~/.claude/sec-arcade-standalone/
 
 # project-level, this repo only
 mkdir -p .claude/skills
 cp -r /tmp/sec-arcade/skills/cartridge-scanner .claude/skills/
 ```
 
-Installing the whole arcade (Option 1) is simpler, `${CLAUDE_PLUGIN_ROOT}` resolves correctly without any path adjustment.
+`SKILL.md` references its script via `${CLAUDE_PLUGIN_ROOT}/scripts/cartridge_scan.py`, an environment variable Claude Code only sets automatically for a full plugin install. For this standalone copy to work, set it yourself before launching Claude Code, e.g. add `export CLAUDE_PLUGIN_ROOT=~/.claude/sec-arcade-standalone` to your shell profile. Without it, Step 1's script invocation won't find the file.
+
+Installing the whole arcade (Option 1) is simpler, `${CLAUDE_PLUGIN_ROOT}` resolves correctly without any manual setup.
 
 ## Usage
 

@@ -114,7 +114,7 @@ Most A06 findings will be design-level with no single line to cite, that's the e
 
 ## Step 7: Factor in language-specific attack vectors
 
-Cross-check the languages and frameworks detected in Step 1 against `${CLAUDE_PLUGIN_ROOT}/references/language-attack-vectors.md`. Only surface a vector if the codebase has actual supporting code for it, an import, a sink, a pattern you can cite by file:line. Don't dump the reference table's full contents into the output, that's noise, not signal, and undermines the "evidence-based" standard the rest of the report holds to.
+Cross-check the languages and frameworks detected in Step 1 against `${CLAUDE_PLUGIN_ROOT}/references/language-attack-vectors.md`. Only surface a vector if the codebase has actual supporting code for it, an import, a sink, a pattern you can cite by file:line. Don't dump the reference table's full contents into the output, that's noise, not signal, and undermines the "evidence-based" standard the rest of the report holds to. This table covers a handful of common languages, not every ecosystem `cartridge-scanner` can detect; if a detected language isn't in the table, say nothing here rather than treating the absence as "no language-specific risk," this section only reports what it actually checked.
 
 ## Step 8: Rate each threat
 
@@ -131,6 +131,7 @@ Combine into an overall risk tier: 🔴 High (High/High, High/Medium, or Medium/
 
 This is the opposite emphasis from a terse verdict block, the goal here is understanding, not speed.
 
+- No em dashes.
 - Write like a mentor walking a teammate through their own system for the first time. Conversational, contractions are good, but every claim about the code is still backed by a file:line citation or explicitly marked architectural/design-level.
 - Define a term the first time it's used: STRIDE letters, OWASP category names, "trust boundary," "attack surface," anything a working developer without a security background might not know. Don't redefine it every time after that.
 - Be exhaustive. This is meant to be a complete artifact someone keeps, not a quick take, cover every component and boundary from Step 2, don't stop at the first few interesting findings. The one deliberate exception is "Worth a Second Look": keep that section genuinely notable-only, a checklist, not a narrative.
