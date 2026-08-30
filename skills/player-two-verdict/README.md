@@ -18,7 +18,7 @@ __      ________ _____  _____ _____ _____ _______
 
 # 2️⃣ Player Two Verdict
 
-*A cabinet in the [sec-arcade](../../): insert coin when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
+*A cabinet in the [sec-arcade](../../): insert token when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Finding Types](https://img.shields.io/badge/finding_types-5-brightgreen)

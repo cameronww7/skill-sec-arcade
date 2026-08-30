@@ -10,7 +10,7 @@
 
 # 🏆 Patch for the High Score
 
-*A cabinet in the [sec-arcade](../../): insert coin when you want a finding actually fixed, deliberately, with real app context behind the call.*
+*A cabinet in the [sec-arcade](../../): insert token when you want a finding actually fixed, deliberately, with real app context behind the call.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Workflow](https://img.shields.io/badge/workflow-analyze_%E2%86%92_plan_%E2%86%92_fix_%E2%86%92_PR-brightgreen)

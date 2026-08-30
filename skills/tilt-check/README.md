@@ -10,7 +10,7 @@
 
 # 🚨 Tilt Check
 
-*A cabinet in the [sec-arcade](../../): insert coin when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*
+*A cabinet in the [sec-arcade](../../): insert token when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Verdicts](https://img.shields.io/badge/verdicts-3-brightgreen)

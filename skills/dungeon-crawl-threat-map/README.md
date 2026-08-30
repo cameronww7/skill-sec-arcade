@@ -18,7 +18,7 @@ ______ _   _ _   _ _____  _____ _____ _   _   _____ ______  ___  _    _ _
 
 # 🗺️ Dungeon Crawl: Threat Map
 
-*A cabinet in the [sec-arcade](../../): insert coin when you want to understand a codebase's shape, not just scan its lines.*
+*A cabinet in the [sec-arcade](../../): insert token when you want to understand a codebase's shape, not just scan its lines.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Framework](https://img.shields.io/badge/framework-STRIDE-brightgreen)

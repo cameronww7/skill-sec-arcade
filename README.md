@@ -18,7 +18,7 @@
 
 # 🕹️ skill-sec-arcade
 
-A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for AppSec and security engineering. Insert coin, learn a skill, boss fight the vuln.
+A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for AppSec and security engineering. Insert token, learn a skill, boss fight the vuln.
 
 ![Claude Code Plugin](https://img.shields.io/badge/claude--code-plugin-5A67D8)
 ![Skills](https://img.shields.io/badge/skills-8-brightgreen)
@@ -36,7 +36,7 @@ No restart, no manual registration. Every skill under `skills/` gets picked up a
 
 ## What's in the machine
 
-| Cabinet | What it does | Insert coin when... |
+| Cabinet | What it does | Insert token when... |
 |---|---|---|
 | [`player-two-verdict`](skills/player-two-verdict) | Independently investigates a pasted scanner finding (SAST/SCA/Secrets/IaC/DAST) against the real repo and returns a true/false-positive verdict with cited evidence, instead of trusting the tool's severity rating. | You paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?" |
 | [`tilt-check`](skills/tilt-check) | The inverse: takes a finding someone (human or AI) already marked False Positive and independently audits that verdict, trying to break the justification before agreeing to close it out. | An FP/suppression writeup exists and you want a skeptical second opinion before it's trusted. |

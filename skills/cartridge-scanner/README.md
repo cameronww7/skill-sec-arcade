@@ -16,7 +16,7 @@
 
 # 🕹️ Cartridge Scanner
 
-*A cabinet in the [sec-arcade](../../): insert coin when you want a language/dependency/IaC/container inventory of a repo, before any deep scanning starts.*
+*A cabinet in the [sec-arcade](../../): insert token when you want a language/dependency/IaC/container inventory of a repo, before any deep scanning starts.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Data Points](https://img.shields.io/badge/data_points-language_%7C_deps_%7C_iac_%7C_containers-brightgreen)

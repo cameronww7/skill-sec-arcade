@@ -14,7 +14,7 @@
 
 # 🏋️ Dead Weight Detector
 
-*A cabinet in the [sec-arcade](../../): insert coin when you want to know if a dependency is actually pulling its weight, or just dead weight in the pack.*
+*A cabinet in the [sec-arcade](../../): insert token when you want to know if a dependency is actually pulling its weight, or just dead weight in the pack.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Ecosystems](https://img.shields.io/badge/ecosystems-9-brightgreen)

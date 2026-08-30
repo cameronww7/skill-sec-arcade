@@ -10,7 +10,7 @@
 
 # ⚡ Patch Boss Rush
 
-*A cabinet in the [sec-arcade](../../): insert coin when a finding looks simple and you want it fixed now, no context-loading ceremony.*
+*A cabinet in the [sec-arcade](../../): insert token when a finding looks simple and you want it fixed now, no context-loading ceremony.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Workflow](https://img.shields.io/badge/workflow-check_%E2%86%92_plan_%E2%86%92_fix-brightgreen)
