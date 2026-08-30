@@ -76,8 +76,8 @@ After the diff is shown, ask via `AskUserQuestion` whether to turn this into a P
 Use this structure:
 
 ```
-⚡ [FIRST-PARTY / OSS DEPENDENCY / SECRET] — [FIX NOW / FALSE POSITIVE] | Confidence: [High / Medium / Low]
-[🚨 ROTATE THIS CREDENTIAL NOW — secrets only, live credential, appears above everything else]
+⚡ [FIRST-PARTY / OSS DEPENDENCY / SECRET] - [FIX NOW / FALSE POSITIVE] | Confidence: [High / Medium / Low]
+[🚨 ROTATE THIS CREDENTIAL NOW - secrets only, live credential, appears above everything else]
 
 Summary: [2-3 plain-language sentences, no jargon, no citations]
 

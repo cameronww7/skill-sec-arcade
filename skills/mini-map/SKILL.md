@@ -25,8 +25,8 @@ Look for `.SEC-Arcade-save_states/THREAT_MODEL.md` in the target repo (or the pa
 
 If it doesn't exist, ask with `AskUserQuestion`, two options:
 
-1. **Run dungeon-crawl-threat-map now** (recommended) — if chosen, follow [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map)'s own `SKILL.md` in full, including its own save step, to produce `THREAT_MODEL.md`, then continue to Step 2.
-2. **I'll generate it myself later** — stop here, don't proceed with a thin or guessed context file.
+1. **Run dungeon-crawl-threat-map now** (recommended) - if chosen, follow [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map)'s own `SKILL.md` in full, including its own save step, to produce `THREAT_MODEL.md`, then continue to Step 2.
+2. **I'll generate it myself later** - stop here, don't proceed with a thin or guessed context file.
 
 ## Step 2: Read the full threat model
 

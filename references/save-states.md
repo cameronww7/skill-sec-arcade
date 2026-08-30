@@ -27,9 +27,9 @@ This folder is also meant to be a stable place other skills can check for prior 
 
 After the full report has been produced and shown inline, ask with `AskUserQuestion`, a single question, three options:
 
-1. **Save and commit** — write the report to its canonical path under `.SEC-Arcade-save_states/`. Don't touch `.gitignore`.
-2. **Save, local only** — write the same file, then make sure that exact file path has an entry in the target repo's `.gitignore`. Create `.gitignore` if the target repo doesn't have one. If it exists, append the entry only if it isn't already present, don't duplicate it on repeat runs. Ignore the specific file path (e.g. `.SEC-Arcade-save_states/CARTRIDGE_SCAN.md`), not the whole folder, since another skill's report living in the same folder might be one the user wants committed.
-3. **Don't save** — inline only, nothing written, `.gitignore` untouched.
+1. **Save and commit** - write the report to its canonical path under `.SEC-Arcade-save_states/`. Don't touch `.gitignore`.
+2. **Save, local only** - write the same file, then make sure that exact file path has an entry in the target repo's `.gitignore`. Create `.gitignore` if the target repo doesn't have one. If it exists, append the entry only if it isn't already present, don't duplicate it on repeat runs. Ignore the specific file path (e.g. `.SEC-Arcade-save_states/CARTRIDGE_SCAN.md`), not the whole folder, since another skill's report living in the same folder might be one the user wants committed.
+3. **Don't save** - inline only, nothing written, `.gitignore` untouched.
 
 Whether a report is worth committing is a per-run call, not a fixed project policy, that's why this is a live prompt every time rather than something decided once in a config file.
 

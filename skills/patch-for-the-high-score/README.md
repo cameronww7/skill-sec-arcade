@@ -131,7 +131,7 @@ Fix this properly, don't just tell me if it's real
 ### Example run (excerpt)
 
 ```
-🛠️ FIRST-PARTY — FIX NOW | Confidence: High
+🛠️ FIRST-PARTY - FIX NOW | Confidence: High
 
 Summary: User-supplied email is concatenated directly into a SQL query
 with no parameterization, an attacker controlling that field can alter

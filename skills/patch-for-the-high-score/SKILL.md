@@ -46,8 +46,8 @@ Investigate using the same methodology as `player-two-verdict`'s Steps 1, 3, and
 Three possible outcomes:
 
 1. **FALSE POSITIVE**: not exploitable here, evidence-cited to the same standard `player-two-verdict` demands. Stop, no fix follows. For SCA, still surface Package Health as its own line regardless of this verdict (same ordering rule `player-two-verdict` uses: an abandoned or stale package is a standing risk independent of whether this specific CVE is reachable, don't let an FP verdict erase that).
-2. **GENUINE — FIX NOW**: proceed to Step 4.
-3. **GENUINE — DEFER (accepted risk)**: rare, requires explicit reasoning, still needs the user's sign-off via `AskUserQuestion` before it's treated as settled. Produces a Risk Acceptance Justification, max 5 sentences, plain language, ready to paste into a ticket, same shape as `player-two-verdict`'s Suppression Justification field.
+2. **GENUINE - FIX NOW**: proceed to Step 4.
+3. **GENUINE - DEFER (accepted risk)**: rare, requires explicit reasoning, still needs the user's sign-off via `AskUserQuestion` before it's treated as settled. Produces a Risk Acceptance Justification, max 5 sentences, plain language, ready to paste into a ticket, same shape as `player-two-verdict`'s Suppression Justification field.
 
 ### Secrets fast path
 
@@ -64,7 +64,7 @@ Once a dependency finding is confirmed genuine and reachable:
 
 ## Step 4: Plan the fix
 
-Only for **GENUINE — FIX NOW** outcomes, this includes the code-side half of a secrets finding and either path of the SCA patch-vs-upgrade decision.
+Only for **GENUINE - FIX NOW** outcomes, this includes the code-side half of a secrets finding and either path of the SCA patch-vs-upgrade decision.
 
 - **Check OWASP guidance as an input, not a gate**: before drafting the plan, check whether `${CLAUDE_PLUGIN_ROOT}/references/owasp-cheat-sheet-series.md`, the full 120-sheet OWASP Cheat Sheet Series catalog, has a sheet relevant to this finding's specific topic. Match directly on the vulnerability or technology involved (a JWT finding matches the JSON Web Token Cheat Sheet, an SSRF finding matches Server-Side Request Forgery Prevention, a hardcoded secret matches Secrets Management), don't route through an OWASP Top 10 category first, that's a different, narrower lookup `dungeon-crawl-threat-map` uses for its own purposes, not this one. Always worth checking, never blocking. If something relevant exists, let it shape the actual fix approach, the right pattern, not just whatever satisfies the scanner, and name the sheet in the fix plan for further reading. If nothing genuinely matches (most IaC misconfigurations, a plain dependency bump), say nothing and move on, don't force a citation that doesn't fit.
 - **Complexity gate**: trivial means a few lines, touching at most 2 files, no schema or API changes, a clear blast radius. If **any** of the following hold, touches more than 2 files, requires a schema/API change, or has an unclear blast radius, stop before writing a quick plan. Call `EnterPlanMode` and work the fix out with the user through Claude Code's normal plan-mode workflow instead of the fast path below. State plainly which condition tripped the gate.
@@ -93,8 +93,8 @@ After the diff is shown, ask via `AskUserQuestion` whether to turn this into a P
 Use this structure:
 
 ```
-🛠️ [FIRST-PARTY / OSS DEPENDENCY / SECRET] — [FIX NOW / DEFER / FALSE POSITIVE] | Confidence: [level]
-[🚨 ROTATE THIS CREDENTIAL NOW — secrets only, live credential, appears above everything else]
+🛠️ [FIRST-PARTY / OSS DEPENDENCY / SECRET] - [FIX NOW / DEFER / FALSE POSITIVE] | Confidence: [level]
+[🚨 ROTATE THIS CREDENTIAL NOW - secrets only, live credential, appears above everything else]
 
 Summary: [2-3 plain-language sentences, no jargon, no citations]
 
