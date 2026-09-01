@@ -36,6 +36,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cartridge_scan import walk, find_files, read_text, read_json, EXCLUDE_DIRS  # noqa: E402
+import abandoned_packages  # noqa: E402
 
 USER_AGENT = "dead-weight-detector/1.0 (github.com/cameronww7/skill-sec-arcade)"
 
@@ -595,6 +596,18 @@ def run_usage(root):
 # regex/JSON-key lookups scoped to exactly the fields needed here.
 
 def resolve_version_npm(root, name):
+    """Resolved version from package-lock.json, yarn.lock, or
+    pnpm-lock.yaml, tried in that order, first match wins."""
+    version = _resolve_version_package_lock_json(root, name)
+    if version:
+        return version
+    version = _resolve_version_yarn_lock(root, name)
+    if version:
+        return version
+    return _resolve_version_pnpm_lock(root, name)
+
+
+def _resolve_version_package_lock_json(root, name):
     """Resolved version from package-lock.json, handling both the v2/v3
     (flat "packages" map) and v1 (nested "dependencies" map) shapes."""
     for lockfile in find_files(root, names={"package-lock.json"}):
@@ -613,6 +626,58 @@ def resolve_version_npm(root, name):
             version = legacy_deps[name].get("version")
             if version:
                 return version
+    return None
+
+
+def _resolve_version_yarn_lock(root, name):
+    """Resolved version from yarn.lock, classic v1 format only (Berry/v2
+    lockfiles use a different syntax entirely and aren't handled here).
+    Not a real parser: splits the file on blank lines into entry blocks,
+    finds each block's header line (unindented, non-comment, ending in
+    ":", not necessarily the block's first line since a leading "#"
+    comment can share a block with the header it precedes), matches one
+    whose comma-separated `name@range` header includes name, then regexes
+    out that block's `version "X.Y.Z"` line."""
+    escaped_name = re.escape(name)
+    header_pattern = re.compile(r'(?:^|,\s*)"?' + escaped_name + r'@[^,":]+"?')
+    for lockfile in find_files(root, names={"yarn.lock"}):
+        for block in re.split(r"\n\s*\n", read_text(lockfile)):
+            lines = block.splitlines()
+            header = next(
+                (line for line in lines
+                 if line.rstrip().endswith(":") and not line.startswith((" ", "\t", "#"))),
+                None,
+            )
+            if not header or not header_pattern.search(header):
+                continue
+            for line in lines:
+                match = re.match(r'^\s*version\s+"([^"]+)"', line)
+                if match:
+                    return match.group(1)
+    return None
+
+
+def _resolve_version_pnpm_lock(root, name):
+    """Resolved version from pnpm-lock.yaml's "packages:" section. No YAML
+    parser dependency is available (stdlib-only), so this regex-scans for
+    a line shaped like "/name@version:" (older lockfile versions) or
+    "name@version:" / "name@version(peerDep@version):" (lockfile v9),
+    stopping the version capture at the first "(" or ":"."""
+    pattern = re.compile(r"^/?" + re.escape(name) + r"@([^(:'\"]+)")
+    for lockfile in find_files(root, names={"pnpm-lock.yaml"}):
+        in_packages_section = False
+        for line in read_text(lockfile).splitlines():
+            if re.match(r"^packages:\s*$", line):
+                in_packages_section = True
+                continue
+            if not in_packages_section:
+                continue
+            if re.match(r"^\S", line):
+                in_packages_section = False
+                continue
+            match = pattern.match(line.strip())
+            if match:
+                return match.group(1)
     return None
 
 
@@ -763,9 +828,13 @@ def resolve_version(root, ecosystem, name):
 # --- health mode: live registry lookups ---------------------------------
 
 def http_json(url, method="GET", data=None, headers=None, timeout=10):
-    """Stdlib-only HTTP JSON helper, no `requests` dependency. Returns None
-    on any network/parse failure rather than raising, every caller in this
-    file treats a failed lookup as "field unavailable," not a crash."""
+    """Stdlib-only HTTP JSON helper, no `requests` dependency. Returns
+    (data, not_found): data is None on any failure, every caller in this
+    file treats that as "field unavailable," not a crash. not_found is
+    True only when the registry responded with HTTP 404, a confirmed
+    absence (e.g. a private/internal package, or a typo) as distinct from
+    a network/timeout/parse failure (not_found False, genuinely unknown,
+    worth retrying rather than treated as "doesn't exist")."""
     request_headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     request_headers.update(headers or {})
     body = None
@@ -775,9 +844,11 @@ def http_json(url, method="GET", data=None, headers=None, timeout=10):
     request = urllib.request.Request(url, data=body, headers=request_headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError):
-        return None
+            return json.loads(response.read().decode("utf-8")), False
+    except urllib.error.HTTPError as error:
+        return None, error.code == 404
+    except (urllib.error.URLError, ValueError, TimeoutError):
+        return None, False
 
 
 OSV_ECOSYSTEM = {
@@ -798,7 +869,7 @@ def check_osv(ecosystem, name, version=None):
         return {"status": "unavailable", "vulnerabilities": [], "version_scoped": False}
     package = {"name": name, "ecosystem": osv_ecosystem}
     query = {"version": version, "package": package} if version else {"package": package}
-    response_data = http_json("https://api.osv.dev/v1/query", method="POST", data=query)
+    response_data, _not_found = http_json("https://api.osv.dev/v1/query", method="POST", data=query)
     if response_data is None:
         return {"status": "unknown", "vulnerabilities": [], "version_scoped": bool(version)}
     vulnerability_ids = [v.get("id") for v in (response_data.get("vulns") or [])]
@@ -806,120 +877,175 @@ def check_osv(ecosystem, name, version=None):
 
 
 def health_npm(name):
-    """Latest publish time and maintainer count from the npm registry
-    metadata endpoint, plus last-month downloads from npm's stats API."""
-    registry_data = http_json(f"https://registry.npmjs.org/{name}")
-    downloads_data = http_json(f"https://api.npmjs.org/downloads/point/last-month/{name}")
+    """Latest publish time, maintainer count, and declared-deprecation
+    message (if any) from the npm registry metadata endpoint, plus
+    last-month downloads from npm's stats API. A maintainer-set
+    `deprecated` message on the latest version is a stronger abandonment
+    signal than any inferred one, see health_tier()."""
+    registry_data, not_found = http_json(f"https://registry.npmjs.org/{name}")
+    downloads_data, _ = http_json(f"https://api.npmjs.org/downloads/point/last-month/{name}")
     if registry_data is None:
-        return {"recency": None, "maintainers": None, "downloads": None}
+        return {
+            "recency": None, "maintainers": None, "downloads": None, "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
     latest_version = (registry_data.get("dist-tags") or {}).get("latest")
     publish_times = registry_data.get("time") or {}
+    version_meta = (registry_data.get("versions") or {}).get(latest_version) or {}
     return {
         "recency": publish_times.get(latest_version),
         "maintainers": len(registry_data.get("maintainers") or []),
         "downloads": (downloads_data or {}).get("downloads"),
+        "deprecated": version_meta.get("deprecated"),
+        "registry_status": "ok",
     }
 
 
 def health_python(name):
     """Latest release upload time from PyPI's JSON API (no maintainer
     count, PyPI's API doesn't expose one), plus last-month downloads from
-    pypistats.org."""
-    registry_data = http_json(f"https://pypi.org/pypi/{name}/json")
+    pypistats.org. If every distribution file for the latest version is
+    marked "yanked", that's PyPI's own deprecation signal, surfaced the
+    same way as npm's `deprecated` field."""
+    registry_data, not_found = http_json(f"https://pypi.org/pypi/{name}/json")
     if registry_data is None:
-        return {"recency": None, "maintainers": "n/a", "downloads": None}
+        return {
+            "recency": None, "maintainers": "n/a", "downloads": None, "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
     releases = registry_data.get("releases") or {}
     latest_version = (registry_data.get("info") or {}).get("version")
+    release_files = releases.get(latest_version) or []
     upload_time = None
-    for release_file in (releases.get(latest_version) or []):
+    for release_file in release_files:
         upload_time = release_file.get("upload_time_iso_8601") or release_file.get("upload_time")
         break
+    deprecated = None
+    if release_files and all(release_file.get("yanked") for release_file in release_files):
+        deprecated = release_files[0].get("yanked_reason") or "yanked on PyPI"
     # PyPI's own API stopped exposing download counts years ago; pypistats.org
     # is a third-party service that fills that gap, best-effort.
-    downloads_data = http_json(f"https://pypistats.org/api/packages/{name}/recent")
+    downloads_data, _ = http_json(f"https://pypistats.org/api/packages/{name}/recent")
     downloads = None
     if downloads_data:
         downloads = (downloads_data.get("data") or {}).get("last_month")
-    return {"recency": upload_time, "maintainers": "n/a", "downloads": downloads}
+    return {
+        "recency": upload_time, "maintainers": "n/a", "downloads": downloads,
+        "deprecated": deprecated, "registry_status": "ok",
+    }
 
 
 def health_go(name):
     """Latest version's publish time from Go's official module proxy.
     No maintainer count or download volume, neither concept exists for
-    Go modules."""
+    Go modules; no deprecation flag either."""
     module_path = name.lower()
-    registry_data = http_json(f"https://proxy.golang.org/{module_path}/@latest")
+    registry_data, not_found = http_json(f"https://proxy.golang.org/{module_path}/@latest")
     if registry_data is None:
-        return {"recency": None, "maintainers": "n/a", "downloads": "n/a"}
-    return {"recency": registry_data.get("Time"), "maintainers": "n/a", "downloads": "n/a"}
+        return {
+            "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
+    return {
+        "recency": registry_data.get("Time"), "maintainers": "n/a", "downloads": "n/a",
+        "deprecated": None, "registry_status": "ok",
+    }
 
 
 def health_rust(name):
     """Last-updated time and download count from crates.io's crate
-    endpoint, plus owner count from its separate owners endpoint."""
-    registry_data = http_json(f"https://crates.io/api/v1/crates/{name}")
+    endpoint, plus owner count from its separate owners endpoint. No
+    deprecation flag, crates.io exposes none."""
+    registry_data, not_found = http_json(f"https://crates.io/api/v1/crates/{name}")
     if registry_data is None:
-        return {"recency": None, "maintainers": None, "downloads": None}
+        return {
+            "recency": None, "maintainers": None, "downloads": None, "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
     crate = registry_data.get("crate") or {}
-    owners_data = http_json(f"https://crates.io/api/v1/crates/{name}/owners")
+    owners_data, _ = http_json(f"https://crates.io/api/v1/crates/{name}/owners")
     maintainer_count = len((owners_data or {}).get("users") or []) if owners_data else None
     return {
         "recency": crate.get("updated_at"),
         "maintainers": maintainer_count,
         "downloads": crate.get("downloads"),
+        "deprecated": None,
+        "registry_status": "ok",
     }
 
 
 def health_ruby(name):
     """Version-created time and download count from RubyGems' gem
     endpoint. "maintainers" is really the free-text `authors` field, not
-    a real count, labeled as such."""
-    registry_data = http_json(f"https://rubygems.org/api/v1/gems/{name}.json")
+    a real count, labeled as such. No deprecation flag exposed."""
+    registry_data, not_found = http_json(f"https://rubygems.org/api/v1/gems/{name}.json")
     if registry_data is None:
-        return {"recency": None, "maintainers": "n/a (authors string, not a count)", "downloads": None}
+        return {
+            "recency": None, "maintainers": "n/a (authors string, not a count)", "downloads": None,
+            "deprecated": None, "registry_status": "not_found" if not_found else "failed",
+        }
     return {
         "recency": registry_data.get("version_created_at"),
         "maintainers": registry_data.get("authors", "n/a"),
         "downloads": registry_data.get("downloads"),
+        "deprecated": None,
+        "registry_status": "ok",
     }
 
 
 def health_php(vendor_pkg):
     """Latest version's publish time from Packagist's v2 metadata
     endpoint, plus maintainer count from its separate package-info
-    endpoint. No download volume, Packagist doesn't expose one."""
-    registry_data = http_json(f"https://repo.packagist.org/p2/{vendor_pkg}.json")
+    endpoint. No download volume or deprecation flag, Packagist exposes
+    neither."""
+    registry_data, not_found = http_json(f"https://repo.packagist.org/p2/{vendor_pkg}.json")
     if registry_data is None:
-        return {"recency": None, "maintainers": None, "downloads": "n/a"}
+        return {
+            "recency": None, "maintainers": None, "downloads": "n/a", "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
     versions = ((registry_data.get("packages") or {}).get(vendor_pkg) or [])
     recency = versions[0].get("time") if versions else None
-    maintainers_data = http_json(f"https://packagist.org/packages/{vendor_pkg}.json")
+    maintainers_data, _ = http_json(f"https://packagist.org/packages/{vendor_pkg}.json")
     maintainer_count = None
     if maintainers_data:
         maintainer_count = len((maintainers_data.get("package") or {}).get("maintainers") or [])
-    return {"recency": recency, "maintainers": maintainer_count, "downloads": "n/a"}
+    return {
+        "recency": recency, "maintainers": maintainer_count, "downloads": "n/a",
+        "deprecated": None, "registry_status": "ok",
+    }
 
 
 def health_java(group_artifact):
     """Latest version's index timestamp from the Maven Central search API.
-    No maintainer count or download volume, Maven Central exposes neither."""
+    No maintainer count, download volume, or deprecation flag, Maven
+    Central exposes none of those."""
     group_id, _, artifact_id = group_artifact.partition(":")
     query = f"g:{group_id}+AND+a:{artifact_id}" if artifact_id else f"a:{group_id}"
-    registry_data = http_json(f"https://search.maven.org/solrsearch/select?q={query}&core=gav&rows=1&wt=json")
+    registry_data, not_found = http_json(f"https://search.maven.org/solrsearch/select?q={query}&core=gav&rows=1&wt=json")
     if not registry_data:
-        return {"recency": None, "maintainers": "n/a", "downloads": "n/a"}
+        return {
+            "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
     docs = ((registry_data.get("response") or {}).get("docs") or [])
     recency = docs[0].get("timestamp") if docs else None
-    return {"recency": recency, "maintainers": "n/a", "downloads": "n/a"}
+    return {
+        "recency": recency, "maintainers": "n/a", "downloads": "n/a",
+        "deprecated": None, "registry_status": "ok",
+    }
 
 
 def health_dotnet(name):
     """Latest catalog entry's publish time from NuGet's registration API.
-    No maintainer count or download volume, parsing those out of this API
-    reliably isn't worth the guesswork."""
-    registry_data = http_json(f"https://api.nuget.org/v3/registration5-semver1/{name.lower()}/index.json")
+    No maintainer count, download volume, or deprecation flag, parsing
+    those out of this API reliably isn't worth the guesswork."""
+    registry_data, not_found = http_json(f"https://api.nuget.org/v3/registration5-semver1/{name.lower()}/index.json")
     if not registry_data:
-        return {"recency": None, "maintainers": "n/a", "downloads": "n/a"}
+        return {
+            "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
     try:
         version_pages = registry_data.get("items") or []
         latest_page = version_pages[-1]
@@ -927,20 +1053,28 @@ def health_dotnet(name):
         recency = catalog_items[-1]["catalogEntry"]["published"] if catalog_items else None
     except (IndexError, KeyError, TypeError):
         recency = None
-    return {"recency": recency, "maintainers": "n/a", "downloads": "n/a"}
+    return {
+        "recency": recency, "maintainers": "n/a", "downloads": "n/a",
+        "deprecated": None, "registry_status": "ok",
+    }
 
 
 def health_dart(name):
     """Latest version's publish time and publisher (a single identity, not
-    a maintainer count) from pub.dev's package API. No download volume,
-    pub.dev doesn't expose one."""
-    registry_data = http_json(f"https://pub.dev/api/packages/{name}")
+    a maintainer count) from pub.dev's package API. No download volume or
+    deprecation flag, pub.dev exposes neither here."""
+    registry_data, not_found = http_json(f"https://pub.dev/api/packages/{name}")
     if not registry_data:
-        return {"recency": None, "maintainers": "n/a", "downloads": "n/a"}
+        return {
+            "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
+            "registry_status": "not_found" if not_found else "failed",
+        }
     return {
         "recency": (registry_data.get("latest") or {}).get("published"),
         "maintainers": registry_data.get("publisher") or "n/a",
         "downloads": "n/a",
+        "deprecated": None,
+        "registry_status": "ok",
     }
 
 
@@ -951,11 +1085,17 @@ HEALTH_FN = {
 }
 
 
-def health_tier(recency, maintainers, downloads, vuln_status):
+def health_tier(recency, maintainers, downloads, vuln_status, deprecated=None, abandoned=None):
     """Combines the raw health fields into one of healthy/slowing/at_risk/
     unknown, per the thresholds in references/registry-health-signals.md.
     Any field that isn't a real number (an "n/a" string, a missing value)
     is treated as not present, not as zero."""
+    # A maintainer-declared deprecation (npm's `deprecated` field, a PyPI
+    # release with every file yanked) or a hit in the curated
+    # abandoned-package list overrides every other signal, these are more
+    # precise than any threshold inferred from recency/maintainers/downloads.
+    if deprecated or abandoned:
+        return "at_risk"
     # A known vulnerability in the version actually pinned overrides every
     # other signal, however healthy the project otherwise looks. An
     # *unscoped* result (couldn't resolve the pinned version) doesn't get
@@ -1000,23 +1140,32 @@ def health_tier(recency, maintainers, downloads, vuln_status):
 def run_health(ecosystem, names, root=None):
     """For each name: looks up registry health data, resolves its pinned
     version from root's lockfile (if root is given), checks OSV for
-    vulnerabilities in that version, and computes a health tier. Returns
-    {name: {...}}."""
+    vulnerabilities in that version, checks the curated abandoned-package
+    list, and computes a health tier. Returns {name: {...}}."""
     health_lookup = HEALTH_FN.get(ecosystem)
     results = {}
     for name in names:
-        registry_data = health_lookup(name) if health_lookup else \
-            {"recency": None, "maintainers": "n/a", "downloads": "n/a"}
+        registry_data = health_lookup(name) if health_lookup else {
+            "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
+            "registry_status": "unavailable",
+        }
         pinned_version = resolve_version(root, ecosystem, name) if root else None
         vulnerability_info = check_osv(ecosystem, name, pinned_version)
+        abandoned_entry = abandoned_packages.lookup(ecosystem, name)
         results[name] = {
             "pinned_version": pinned_version,
             "recency": registry_data.get("recency"),
             "maintainers": registry_data.get("maintainers"),
             "downloads": registry_data.get("downloads"),
+            "deprecated": registry_data.get("deprecated"),
+            "registry_status": registry_data.get("registry_status", "ok"),
             "vulnerabilities": vulnerability_info,
-            "health_tier": health_tier(registry_data.get("recency"), registry_data.get("maintainers"),
-                                        registry_data.get("downloads"), vulnerability_info),
+            "abandoned": abandoned_entry,
+            "health_tier": health_tier(
+                registry_data.get("recency"), registry_data.get("maintainers"),
+                registry_data.get("downloads"), vulnerability_info,
+                deprecated=registry_data.get("deprecated"), abandoned=abandoned_entry,
+            ),
         }
     return results
 

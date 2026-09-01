@@ -8,6 +8,28 @@ Lookup table for `dead-weight-detector`'s health check (`dead_weight_scan.py hea
 |---|---|---|---|---|
 | npm | Yes | Yes (`maintainers[]`) | Yes | `registry.npmjs.org/<pkg>`, `api.npmjs.org/downloads/point/last-month/<pkg>` |
 | Python (PyPI) | Yes | N/A, PyPI's API has no reliable maintainer list | Best-effort, third-party service | `pypi.org/pypi/<pkg>/json`, `pypistats.org/api/packages/<pkg>/recent` |
+
+## Declared deprecation: a stronger signal than any threshold
+
+npm and PyPI both let a maintainer declare a package deprecated directly,
+rather than leaving it to be inferred from recency/maintainers/downloads:
+
+- **npm**: the latest version's entry in the registry response's
+  `versions` map carries a `deprecated` string when set. Surfaced as the
+  `deprecated` field in `dead_weight_scan.py`'s health output.
+- **Python (PyPI)**: individual release files carry a `yanked` boolean and
+  `yanked_reason`. If every file for the latest version is yanked, that's
+  treated the same as an explicit deprecation message.
+- No other ecosystem covered here exposes an equivalent field; `deprecated`
+  is always `None` for Go, Rust, Ruby, PHP, Java, .NET, and Dart.
+
+Separately, `dead_weight_scan.py` also checks a small hand-curated list of
+well-known abandoned packages (`scripts/abandoned_packages.py`) with a
+named replacement for each, for cases a live signal alone might not catch
+(steady downloads on old code, no widely-known CVE, but the ecosystem has
+moved on). Both an npm/PyPI `deprecated` hit and an abandoned-list hit
+force the `at_risk` tier the same way a version-scoped OSV match does, see
+below.
 | Go | Yes | N/A, no registry concept of a maintainer | N/A, no registry concept of downloads | `proxy.golang.org/<module>/@latest` |
 | Rust (crates.io) | Yes | Yes (owners endpoint) | Yes | `crates.io/api/v1/crates/<pkg>`, `.../owners` (requires a descriptive User-Agent header per crates.io policy) |
 | Ruby (RubyGems) | Yes | Approximate, `authors` is a free-text string, not a real count | Yes | `rubygems.org/api/v1/gems/<pkg>.json` |
@@ -40,5 +62,5 @@ OSV ecosystem-name mapping (the string OSV expects, not always the same as the n
 
 - **Healthy**: last release under 3 months old AND (2+ maintainers OR 10,000+ monthly downloads) AND no version-scoped OSV match.
 - **Slowing**: last release 3-12 months old, or only 1 maintainer, or under 10,000 monthly downloads but still active. Also where unscoped OSV history exists but nothing version-scoped forces At Risk.
-- **At Risk**: last release over 12 months old, or 0 maintainers found, or any version-scoped OSV vulnerability match. The OSV match overrides everything else, an unpatched known vulnerability in what's actually pinned makes it At Risk regardless of how active the project otherwise looks.
-- **Unknown**: the lookup failed, or every signal for that ecosystem came back N/A. Never guess a tier from missing data.
+- **At Risk**: last release over 12 months old, or 0 maintainers found, or any version-scoped OSV vulnerability match, or a maintainer-declared deprecation (npm `deprecated` / PyPI fully-yanked release), or a hit in the curated abandoned-package list. Any of these overrides everything else, an unpatched known vulnerability or a declared/curated abandonment makes it At Risk regardless of how active the project otherwise looks.
+- **Unknown**: the lookup failed, or every signal for that ecosystem came back N/A. Never guess a tier from missing data. The report layer should still distinguish *why* it's unknown using the `registry_status` field (`"not_found"`: the registry returned HTTP 404, a confirmed absence worth flagging as likely a private/internal package or a typo, vs. `"failed"`: a network/timeout/parse error, genuinely transient and worth retrying) even though both collapse to the same `unknown` tier.

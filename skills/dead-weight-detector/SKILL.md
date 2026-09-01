@@ -62,6 +62,13 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py health <ecosystem> <re
 
 If `vulnerabilities.version_scoped` is `false`, the listed vulnerability IDs are the package's entire historical advisory list, not confirmation the pinned version is affected. Say this explicitly if any show up unscoped, and don't let them alone justify an At Risk framing in your own writeup (the script already won't compute that as the tier, but the raw IDs still get surfaced, contextualize them correctly).
 
+Two more fields ride along in the same output, both of which force the `at_risk` tier on their own:
+
+- `deprecated`: a maintainer-declared deprecation message (npm's `deprecated` field, or a fully-yanked latest release on PyPI). Stronger evidence than any inferred staleness, quote the message directly rather than paraphrasing it.
+- `abandoned`: a hit against the curated abandoned-package list (`{"reason": ..., "replacement": ...}`), for well-known dead ends a live signal alone might not catch. When present, its `replacement` is the answer to feed into Step 6/7 directly instead of judging replacement complexity from scratch.
+
+Also check `registry_status`: `"not_found"` means the registry returned a 404, a confirmed absence, worth flagging as likely a private/internal package or a typo rather than presenting identically to `"failed"` (a transient network/timeout error, genuinely just unknown for now).
+
 ## Step 6: Judge replacement complexity
 
 This is the actual value this skill adds over a mechanical script: is what's being used trivial to hand-roll, or genuinely risky to reimplement? Calibration anchors:
@@ -70,6 +77,8 @@ This is the actual value this skill adds over a mechanical script: is what's bei
 - **Usually not worth reinventing**, even at low usage: anything cryptographic (hashing, signing, random token generation), timezone/calendar math, HTML/URL/SQL sanitization or escaping, parsers for a real format (JSON is fine to trust the stdlib for, a custom binary or config format usually isn't), anything implementing a security control (auth, CSRF, rate limiting).
 
 State which bucket the used surface falls into and why, in one or two sentences, don't just assert it.
+
+If Step 5's `abandoned` field is present, skip the from-scratch judgment and name its `replacement` directly instead, that's a maintained, community-vetted answer rather than a guess at hand-rolling complexity.
 
 ## Step 7: Final verdict
 
@@ -108,8 +117,8 @@ One of four, always evidence-cited back to Steps 1-6:
 
 **Usage**: [files_importing] files, [call_site_count] call sites, tier [minimal/light/moderate/heavy]
 **What it's used for**: [1-2 sentences from Step 4, cited by file:line]
-**Health**: recency [date or n/a] · maintainers [count or n/a] · downloads [count or n/a] · vulnerabilities [none / IDs, scoped or unscoped] -> [health tier]
-**Replacement complexity**: [trivial / not worth reinventing], [why, 1 sentence]
+**Health**: recency [date or n/a] · maintainers [count or n/a] · downloads [count or n/a] · vulnerabilities [none / IDs, scoped or unscoped] · deprecated [message or none] -> [health tier]
+**Replacement complexity**: [trivial / not worth reinventing / named replacement from the abandoned-package list], [why, 1 sentence]
 
 **Verdict: [KEEP / CANDIDATE TO INLINE / KEEP BUT WATCH / NEEDS HUMAN JUDGMENT]**
 [1-2 sentence justification tying the above together]
@@ -131,5 +140,6 @@ After producing the report, follow the save prompt defined in `${CLAUDE_PLUGIN_R
 ## Reference material
 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py`: does the mechanical work, local usage-site scanning (Step 1) and live registry health lookups (Step 5). Reuses `cartridge_scan.py`'s file-discovery helpers but does not modify that script or its output.
+- `${CLAUDE_PLUGIN_ROOT}/scripts/abandoned_packages.py`: the curated abandoned-package list `dead_weight_scan.py`'s health check consults, used in Steps 5-6.
 - `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md`: which health signal is available per ecosystem and where it comes from, the OSV.dev ecosystem-name mapping, and the exact health-tier thresholds, used in Step 5.
 - `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention, used in Step 9.

@@ -36,6 +36,22 @@ Run it, get back:
 - A **KEEP** / **CANDIDATE TO INLINE** / **KEEP BUT WATCH** / **NEEDS HUMAN JUDGMENT** verdict per deep-dived dependency
 - Every health claim cited back to a named registry field, never a vague "looks unmaintained"
 
+## Supported ecosystems
+
+| Ecosystem | Manifest | Lock file |
+|-----------|----------|-----------|
+| npm | `package.json` | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` |
+| Python (PyPI) | `requirements.txt`, `pyproject.toml` (PEP 621 + Poetry), `Pipfile` | `poetry.lock`, `Pipfile.lock` (requirements.txt pins are read directly) |
+| Go | `go.mod` | -- (version pinned directly in the manifest) |
+| Java (Maven) | `pom.xml`, `build.gradle` / `build.gradle.kts` | -- (version pinned directly in the manifest) |
+| Ruby (RubyGems) | `Gemfile` | `Gemfile.lock` |
+| PHP (Composer) | `composer.json` | `composer.lock` |
+| Rust (crates.io) | `Cargo.toml` | `Cargo.lock` |
+| .NET (NuGet) | `*.csproj` | -- (version pinned directly in the manifest) |
+| Dart (pub.dev) | `pubspec.yaml` | `pubspec.lock` |
+
+Not read: Python's `setup.py`, `setup.cfg`, or `uv.lock`, and Ruby's `*.gemspec`. A project relying only on those manifest forms won't show up in the scan for that ecosystem.
+
 ## How it flows
 
 ```
