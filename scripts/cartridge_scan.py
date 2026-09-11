@@ -15,6 +15,8 @@ also imported directly by dead_weight_scan.py, keep their names and
 signatures stable.
 """
 
+import ast
+import configparser
 import json
 import os
 import re
@@ -50,7 +52,7 @@ FALLBACK_EXT_LANG = {
 # pointing somewhere else is flagged as a private/internal registry, see
 # add_if_private() below.
 DEFAULT_REGISTRY_HOSTS = {
-    "npm": {"registry.npmjs.org"},
+    "javascript": {"registry.npmjs.org"},
     "pip": {"pypi.org", "files.pythonhosted.org"},
     "maven": {"repo.maven.apache.org", "repo1.maven.org", "central.sonatype.com"},
     "gem": {"rubygems.org"},
@@ -225,11 +227,12 @@ def add_if_private(private_registries, ecosystem, url, source_file, default_host
 
 # --- per-ecosystem package manager inventory ----------------------------
 
-def scan_npm(root, package_managers, private_registries):
-    """npm/yarn/pnpm: declared count from package.json, resolved count
-    from whichever lockfile is present (format differs by tool), plus any
-    non-default registry found in package.json or .npmrc. Appends one
-    entry to package_managers if any npm manifest/lockfile exists."""
+def scan_javascript(root, package_managers, private_registries):
+    """JavaScript, via npm/yarn/pnpm: declared count from package.json,
+    resolved count from whichever lockfile is present (format differs by
+    tool), plus any non-default registry found in package.json or .npmrc.
+    Appends one entry to package_managers if any npm manifest/lockfile
+    exists."""
     manifests = find_files(root, names={"package.json"})
     lockfiles = find_files(root, names={"package-lock.json", "yarn.lock", "pnpm-lock.yaml"})
     if not manifests and not lockfiles:
@@ -243,7 +246,8 @@ def scan_npm(root, package_managers, private_registries):
                               ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"))
         publish_registry = (data.get("publishConfig") or {}).get("registry")
         if publish_registry:
-            add_if_private(private_registries, "npm", publish_registry, manifest, DEFAULT_REGISTRY_HOSTS["npm"])
+            add_if_private(private_registries, "javascript", publish_registry, manifest,
+                            DEFAULT_REGISTRY_HOSTS["javascript"])
         break
     resolved_count = None
     for lockfile in lockfiles:
@@ -278,25 +282,71 @@ def scan_npm(root, package_managers, private_registries):
     for npmrc_file in find_files(root, names={".npmrc"}):
         text = read_text(npmrc_file)
         for match in re.finditer(r"^(?:@[\w-]+:)?registry\s*=\s*(\S+)", text, re.MULTILINE):
-            add_if_private(private_registries, "npm", match.group(1), npmrc_file, DEFAULT_REGISTRY_HOSTS["npm"])
-    package_managers.append({"ecosystem": "npm", "manifest_files": manifests, "lockfile_files": lockfiles,
+            add_if_private(private_registries, "javascript", match.group(1), npmrc_file,
+                            DEFAULT_REGISTRY_HOSTS["javascript"])
+    package_managers.append({"ecosystem": "javascript", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
+
+
+def install_requires_from_setup_cfg(path):
+    """setup.cfg's [options] install_requires field via stdlib configparser
+    (setup.cfg is genuine INI, no need for a hand-rolled continuation-line
+    parser; configparser already correctly joins the "install_requires =\\n
+    pkg1\\n    pkg2" continuation form into one string). Returns a list of
+    requirement-spec strings (version specifier still attached, same shape
+    as a requirements.txt line), or None if unparseable/absent."""
+    parser = configparser.ConfigParser()
+    try:
+        parser.read_string(read_text(path))
+    except configparser.Error:
+        return None
+    if not parser.has_option("options", "install_requires"):
+        return None
+    raw = parser.get("options", "install_requires")
+    return [line.strip() for line in raw.replace(",", "\n").splitlines() if line.strip()]
+
+
+def install_requires_from_setup_py(path):
+    """setup.py's setup(install_requires=...) argument, extracted via ast
+    in parse-only mode. This tool never executes code from a scanned repo,
+    a real concern for a security-tooling suite pointed at untrusted repos,
+    so only a literal list/tuple of strings is resolved; a computed value
+    (a variable, a call to a helper that reads requirements.txt, etc.)
+    can't be resolved statically and is honestly skipped, not guessed."""
+    try:
+        tree = ast.parse(read_text(path))
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "setup":
+            for keyword in node.keywords:
+                if keyword.arg == "install_requires":
+                    try:
+                        value = ast.literal_eval(keyword.value)
+                    except (ValueError, SyntaxError):
+                        return None
+                    if isinstance(value, (list, tuple)):
+                        return [v for v in value if isinstance(v, str)]
+    return None
 
 
 def scan_python(root, package_managers, private_registries):
     """Python: declared count from requirements*.txt, pyproject.toml
-    (PEP 621 and Poetry), and Pipfile; resolved count from Pipfile.lock
-    and poetry.lock; non-default index URLs from any of those plus
-    pip.conf/pip.ini."""
+    (PEP 621 and Poetry), Pipfile, setup.py, and setup.cfg; resolved count
+    from Pipfile.lock, poetry.lock, and uv.lock; non-default index URLs
+    from any of those plus pip.conf/pip.ini."""
     requirements_files = find_files(root, suffixes=("requirements.txt",)) + \
         [f for f in find_files(root, suffixes=(".txt",)) if os.path.basename(f).startswith("requirements")]
     requirements_files = sorted(set(requirements_files))
     pyproject_files = find_files(root, names={"pyproject.toml"})
     pipfiles = find_files(root, names={"Pipfile"})
+    setup_pys = find_files(root, names={"setup.py"})
+    setup_cfgs = find_files(root, names={"setup.cfg"})
     pipfile_locks = find_files(root, names={"Pipfile.lock"})
     poetry_locks = find_files(root, names={"poetry.lock"})
-    manifests = requirements_files + pyproject_files + pipfiles
-    lockfiles = pipfile_locks + poetry_locks
+    uv_locks = find_files(root, names={"uv.lock"})
+    manifests = requirements_files + pyproject_files + pipfiles + setup_pys + setup_cfgs
+    lockfiles = pipfile_locks + poetry_locks + uv_locks
     if not manifests and not lockfiles:
         return
     declared_count = None
@@ -332,12 +382,20 @@ def scan_python(root, package_managers, private_registries):
         for section in ("packages", "dev-packages"):
             section_lines = toml_section_lines(text, section)
             declared_count = (declared_count or 0) + count_key_value_lines(section_lines)
+    for setup_py_file in setup_pys:
+        requires = install_requires_from_setup_py(setup_py_file)
+        if requires:
+            declared_count = (declared_count or 0) + len(requires)
+    for setup_cfg_file in setup_cfgs:
+        requires = install_requires_from_setup_cfg(setup_cfg_file)
+        if requires:
+            declared_count = (declared_count or 0) + len(requires)
     resolved_count = None
     for lockfile in pipfile_locks:
         data = read_json(lockfile)
         if isinstance(data, dict):
             resolved_count = (resolved_count or 0) + len(data.get("default") or {}) + len(data.get("develop") or {})
-    for lockfile in poetry_locks:
+    for lockfile in poetry_locks + uv_locks:
         text = read_text(lockfile)
         block_count = len(re.findall(r"^\[\[package\]\]\s*$", text, re.MULTILINE))
         if block_count:
@@ -397,10 +455,14 @@ def scan_go(root, package_managers, private_registries):
 
 
 def scan_java(root, package_managers, private_registries):
-    """Java/Maven/Gradle: declared count from <dependency> tags (pom.xml)
-    or dependency-config calls (build.gradle), plus any custom Maven
-    repository URL. No resolved count, Maven has no default lockfile."""
-    manifests = find_files(root, names={"pom.xml", "build.gradle", "build.gradle.kts"})
+    """Java/Maven/Gradle/Ivy: declared count from <dependency> tags
+    (pom.xml), dependency-config calls (build.gradle), or <dependency
+    org=.../> tags (ivy.xml), plus any custom Maven repository URL. No
+    resolved count, none of the three has a default lockfile. Ivy resolvers
+    are conventionally configured in a separate ivysettings.xml, not
+    embedded in ivy.xml itself, so private-registry detection isn't
+    attempted for Ivy manifests."""
+    manifests = find_files(root, names={"pom.xml", "build.gradle", "build.gradle.kts", "ivy.xml"})
     if not manifests:
         return
     declared_count = None
@@ -413,6 +475,11 @@ def scan_java(root, package_managers, private_registries):
                 for url_match in re.finditer(r"<url>([^<]+)</url>", repositories_block.group(1)):
                     add_if_private(private_registries, "maven", url_match.group(1), manifest,
                                     DEFAULT_REGISTRY_HOSTS["maven"])
+        elif manifest.endswith("ivy.xml"):
+            # Ivy's <dependency org="..." name="..." rev="..."/> is a
+            # self-closing attribute tag, unlike Maven's nested-element
+            # <dependency>...</dependency>, so it needs its own count.
+            declared_count = (declared_count or 0) + len(re.findall(r"<dependency\b", text))
         else:
             declared_count = (declared_count or 0) + len(re.findall(
                 r"\b(?:implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly)\s*[\(\'\"]",
@@ -528,19 +595,32 @@ def scan_rust(root, package_managers, private_registries):
 
 
 def scan_dotnet(root, package_managers, private_registries):
-    """.NET/NuGet: declared count from <PackageReference> tags across
-    .csproj files, resolved count from packages.lock.json (if present),
-    plus any custom source in nuget.config."""
-    manifests = find_files(root, suffixes=(".csproj",))
-    lockfiles = find_files(root, names={"packages.lock.json"})
+    """.NET/NuGet/Paket: declared count from <PackageReference> tags across
+    .csproj files plus `nuget` lines in paket.dependencies, resolved count
+    from packages.lock.json and/or paket.lock (if present), plus any
+    custom source in nuget.config or paket.dependencies. Paket and the
+    NuGet CLI both resolve from the same NuGet registry, so they share one
+    ecosystem entry here."""
+    csproj_files = find_files(root, suffixes=(".csproj",))
+    paket_deps_files = find_files(root, names={"paket.dependencies"})
+    manifests = csproj_files + paket_deps_files
+    packages_lock_files = find_files(root, names={"packages.lock.json"})
+    paket_lock_files = find_files(root, names={"paket.lock"})
+    lockfiles = packages_lock_files + paket_lock_files
     if not manifests and not lockfiles:
         return
     declared_count = None
-    for csproj_file in manifests:
+    for csproj_file in csproj_files:
         text = read_text(csproj_file)
         declared_count = (declared_count or 0) + len(re.findall(r"<PackageReference\b", text))
+    for paket_deps_file in paket_deps_files:
+        text = read_text(paket_deps_file)
+        declared_count = (declared_count or 0) + len(re.findall(r"^\s*nuget\s+\S+", text, re.MULTILINE | re.IGNORECASE))
+        for source_match in re.finditer(r"^\s*source\s+(\S+)", text, re.MULTILINE | re.IGNORECASE):
+            add_if_private(private_registries, "nuget", source_match.group(1), paket_deps_file,
+                            DEFAULT_REGISTRY_HOSTS["nuget"])
     resolved_count = None
-    for lockfile in lockfiles:
+    for lockfile in packages_lock_files:
         data = read_json(lockfile)
         if isinstance(data, dict) and isinstance(data.get("dependencies"), dict):
             total = 0
@@ -549,6 +629,24 @@ def scan_dotnet(root, package_managers, private_registries):
                     total += len(framework_deps)
             if total:
                 resolved_count = (resolved_count or 0) + total
+    for paket_lock_file in paket_lock_files:
+        text = read_text(paket_lock_file)
+        # paket.lock's NUGET block uses the same indentation convention as
+        # Gemfile.lock's specs: block, 4-space-indented lines are top-level
+        # packages, 6-space-indented lines are their transitive deps.
+        count = 0
+        in_nuget_section = False
+        for line in text.splitlines():
+            if line.strip() == "NUGET":
+                in_nuget_section = True
+                continue
+            if in_nuget_section:
+                if line.startswith("    ") and not line.startswith("      ") and not line.strip().startswith("remote:"):
+                    count += 1
+                elif line and not line.startswith(" "):
+                    in_nuget_section = False
+        if count:
+            resolved_count = (resolved_count or 0) + count
     for nuget_config_file in find_files(root, names={"nuget.config", "NuGet.Config"}):
         text = read_text(nuget_config_file)
         for match in re.finditer(r'<add\s+key="[^"]*"\s+value="([^"]+)"', text):
@@ -595,14 +693,132 @@ def scan_dart(root, package_managers, _private_registries):
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
+def run_syft_conan(root):
+    """Shells out to `syft dir:<root> -o json --select-catalogers conan,sbom`
+    for Conan dependency detection: syft's conan-cataloger correctly
+    handles both conan.lock v1 and v2 formats plus conaninfo.txt, and its
+    sbom-cataloger picks up any vendor-supplied SBOM checked into the repo
+    (*.cdx.json, *.spdx.json, *.syft.json), none of which the regex/JSON
+    fallback in scan_cpp() can match. Returns a list of {"name", "version"}
+    artifact dicts, or None if syft isn't installed, times out, or exits
+    non-zero, the caller falls back to the manifest-only parse in that
+    case, same optional-tool contract as run_scc()."""
+    try:
+        proc = subprocess.run(
+            ["syft", f"dir:{root}", "-o", "json", "--select-catalogers", "conan,sbom"],
+            capture_output=True, text=True, timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        data = json.loads(proc.stdout)
+    except ValueError:
+        return None
+    return [a for a in (data.get("artifacts") or []) if a.get("name") and a.get("version")]
+
+
+def scan_cpp_structural_signals(root):
+    """Best-effort CMakeLists.txt find_package()/FetchContent_Declare()
+    calls and .gitmodules submodule entries: a structural hint that a
+    C/C++ dependency exists, not a real manifest entry. Most of the time
+    there's no pinned version to report, find_package() usually has none
+    at all, and a FetchContent GIT_TAG can be a branch name rather than a
+    release, so this is deliberately kept out of declared_dependencies/
+    resolved_dependencies in scan_cpp(), a lower-confidence signal, not a
+    substitute for a real manifest. Mirrors the "structural regex signal,
+    not deep analysis" approach already used for Dockerfile FROM scraping
+    and IaC content-sniffing elsewhere in this file."""
+    signals = []
+    for cmake_file in find_files(root, names={"CMakeLists.txt"}):
+        text = read_text(cmake_file)
+        for match in re.finditer(r"find_package\(\s*([A-Za-z0-9_.-]+)", text):
+            signals.append({"name": match.group(1), "source": "find_package", "file": cmake_file})
+        for match in re.finditer(
+                r"FetchContent_Declare\(\s*([A-Za-z0-9_.-]+)[^)]*?GIT_REPOSITORY\s+(\S+)(?:[^)]*?GIT_TAG\s+(\S+))?",
+                text, re.DOTALL):
+            signals.append({"name": match.group(1), "source": "FetchContent_Declare", "file": cmake_file,
+                             "repository": match.group(2), "ref": match.group(3)})
+    for gitmodules_file in find_files(root, names={".gitmodules"}):
+        text = read_text(gitmodules_file)
+        for match in re.finditer(r'\[submodule\s+"([^"]+)"\][^\[]*?url\s*=\s*(\S+)', text, re.DOTALL):
+            signals.append({"name": match.group(1), "source": "gitmodules", "file": gitmodules_file,
+                             "repository": match.group(2)})
+    return signals
+
+
+def scan_cpp(root, package_managers, private_registries):
+    """C/C++: Conan (via syft when available, since it handles conan.lock
+    v1+v2, conaninfo.txt, and vendor SBOMs, else conanfile.txt/
+    conanfile.py + conan.lock v2-shape parsing) and vcpkg (vcpkg.json,
+    always hand-rolled, syft has no vcpkg cataloger). CMakeLists.txt/
+    .gitmodules structural signals are reported separately, see
+    scan_cpp_structural_signals(). No private-registry detection in this
+    pass, no reliable committed-file convention for Conan remotes (same
+    call already made for Ivy/Dart)."""
+    conanfile_txts = find_files(root, names={"conanfile.txt"})
+    conanfile_pys = find_files(root, names={"conanfile.py"})
+    vcpkg_jsons = find_files(root, names={"vcpkg.json"})
+    conan_locks = find_files(root, names={"conan.lock"})
+    manifests = conanfile_txts + conanfile_pys + vcpkg_jsons
+    lockfiles = conan_locks
+    unversioned_signals = scan_cpp_structural_signals(root)
+    if not manifests and not lockfiles and not unversioned_signals:
+        return
+
+    declared_count = None
+    for conanfile_txt in conanfile_txts:
+        text = read_text(conanfile_txt)
+        count = 0
+        for section in ("requires", "build_requires", "tool_requires"):
+            for line in toml_section_lines(text, section):
+                stripped_line = line.strip()
+                if stripped_line and not stripped_line.startswith("#"):
+                    count += 1
+        declared_count = (declared_count or 0) + count
+    for conanfile_py in conanfile_pys:
+        text = read_text(conanfile_py)
+        count = len(re.findall(r"self\.(?:requires|build_requires|tool_requires)\(", text))
+        declared_count = (declared_count or 0) + count
+    for vcpkg_json_file in vcpkg_jsons:
+        data = read_json(vcpkg_json_file)
+        if isinstance(data, dict):
+            deps = data.get("dependencies")
+            if isinstance(deps, list):
+                declared_count = (declared_count or 0) + len(deps)
+
+    resolved_count = None
+    syft_packages = run_syft_conan(root) if (conanfile_txts or conanfile_pys or conan_locks) else None
+    if syft_packages is not None:
+        resolved_count = len(syft_packages) or None
+    else:
+        for lockfile in conan_locks:
+            data = read_json(lockfile)
+            if isinstance(data, dict):
+                count = 0
+                for key in ("requires", "build_requires", "tool_requires", "python_requires"):
+                    value = data.get(key)
+                    if isinstance(value, list):
+                        count += len(value)
+                if count:
+                    resolved_count = (resolved_count or 0) + count
+
+    package_managers.append({
+        "ecosystem": "cpp", "manifest_files": manifests, "lockfile_files": lockfiles,
+        "declared_dependencies": declared_count, "resolved_dependencies": resolved_count,
+        "unversioned_signals": unversioned_signals,
+    })
+
+
 def scan_package_managers(root):
     """Runs every ecosystem's scan_* function and collects their results.
     Returns (package_managers, private_registries), the two lists every
     scan_* function appends/extends in place."""
     package_managers = []
     private_registries = []
-    for scan_fn in (scan_npm, scan_python, scan_go, scan_java, scan_ruby, scan_php, scan_rust, scan_dotnet,
-                     scan_dart):
+    for scan_fn in (scan_javascript, scan_python, scan_go, scan_java, scan_ruby, scan_php, scan_rust, scan_dotnet,
+                     scan_dart, scan_cpp):
         scan_fn(root, package_managers, private_registries)
     return package_managers, private_registries
 

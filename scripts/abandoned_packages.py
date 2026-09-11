@@ -15,7 +15,7 @@ concrete replacement, "just don't use it" isn't actionable in a report.
 """
 
 ABANDONED = {
-    "npm": {
+    "javascript": {
         "request": {
             "reason": "Deprecated by its maintainers in 2020; unmaintained since.",
             "replacement": "node-fetch, got, or axios",
@@ -64,6 +64,7 @@ ABANDONED = {
     "java": {},
     "dotnet": {},
     "dart": {},
+    "cpp": {},
 }
 
 

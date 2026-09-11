@@ -15,14 +15,15 @@ Deliberately has no tool or vendor names. The landscape of open-source and comme
 | Signal | Capability needed |
 |---|---|
 | `package.json` + npm/yarn/pnpm lockfile | A dependency-vulnerability scanner that reads npm lockfiles and checks resolved packages, direct and transitive, against a known-vulnerability database. |
-| `requirements*.txt` / `pyproject.toml` / `Pipfile` / `poetry.lock` | A Python-aware dependency scanner that checks pinned versions in the lockfile or requirements file against a vulnerability database. |
+| `requirements*.txt` / `pyproject.toml` / `Pipfile` / `setup.py` / `setup.cfg` / `poetry.lock` / `uv.lock` | A Python-aware dependency scanner that checks pinned versions in the lockfile or requirements file against a vulnerability database. |
 | `go.mod` / `go.sum` | A Go module scanner that cross-references `go.sum` entries against a vulnerability database and can confirm whether the vulnerable symbol is actually imported. |
-| `pom.xml` / `build.gradle` | A JVM dependency scanner that resolves the full Maven/Gradle tree, including transitives, against a CVE database. |
+| `pom.xml` / `build.gradle` / `ivy.xml` | A JVM dependency scanner that resolves the full Maven/Gradle/Ivy tree, including transitives, against a CVE database. |
 | `Gemfile` / `Gemfile.lock` | A Bundler-aware scanner checking `Gemfile.lock` entries against a Ruby-specific advisory database. |
 | `composer.json` / `composer.lock` | A Composer-aware scanner checking `composer.lock` entries against a PHP-specific advisory database. |
 | `Cargo.toml` / `Cargo.lock` | A Cargo-aware scanner reading `Cargo.lock` against a Rust-specific advisory database. |
-| `*.csproj` / `packages.lock.json` | A NuGet-aware scanner checking resolved package versions against a vulnerability database. |
+| `*.csproj` / `packages.lock.json` / `paket.dependencies` / `paket.lock` | A NuGet-aware scanner (with Paket-lock support if the repo uses Paket instead of the NuGet CLI) checking resolved package versions against a vulnerability database. |
 | `pubspec.yaml` / `pubspec.lock` | A Dart/Flutter-aware scanner checking resolved package versions against a vulnerability database. |
+| `conanfile.txt` / `conanfile.py` / `conan.lock` / `vcpkg.json` | A C/C++-aware dependency scanner covering both Conan (ConanCenter advisories) and vcpkg; CVE matching for this ecosystem still leans heavily on CPEs, expect more false positives/negatives than the registry-backed ecosystems above. Vendored/copy-pasted source, `find_package()`/`FetchContent_Declare()`-only dependencies, and statically-linked binaries need source-fingerprinting or build-image-scanning capability this row doesn't cover. |
 
 ## Secrets
 

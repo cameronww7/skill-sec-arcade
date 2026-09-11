@@ -20,6 +20,7 @@
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
 ![Data Points](https://img.shields.io/badge/data_points-language_%7C_deps_%7C_iac_%7C_containers-brightgreen)
+![Ecosystems](https://img.shields.io/badge/ecosystems-10-brightgreen)
 ![Focus](https://img.shields.io/badge/focus-appsec_recon-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
@@ -32,7 +33,7 @@ You can't point a security tool at a codebase you haven't characterized. A Java 
 Run it, get back:
 
 - A language and lines-of-code breakdown, dominant language(s) and polyglot risk called out
-- A package manager inventory across nine ecosystems (npm/yarn/pnpm, Python, Go, Java, Ruby, PHP, Rust, .NET, Dart), with approximate declared and resolved dependency counts
+- A package manager inventory across ten ecosystems (JavaScript via npm/yarn/pnpm, Python, Go, Java, Ruby, PHP, Rust, .NET, Dart, C/C++ via Conan/vcpkg), with approximate declared and resolved dependency counts, plus low-confidence structural signals (CMakeLists.txt/.gitmodules) for C/C++ dependencies that don't have a real manifest
 - Explicit detection of private/internal package registries per ecosystem, and why that matters for SCA coverage
 - An Infrastructure-as-Code inventory (Terraform, CloudFormation, Kubernetes/Helm, Ansible, Pulumi, Serverless, CDK)
 - A container inventory (Dockerfiles with base images, compose files)
@@ -99,6 +100,7 @@ Run it, get back:
 - [Claude Code](https://claude.com/claude-code) installed and configured
 - Python 3 on `$PATH` (the helper script is stdlib-only, no extra packages)
 - [`scc`](https://github.com/boyter/scc) on `$PATH` for full language/LOC data (comment/blank/complexity breakdown). Not required, the script falls back to a rough file/line count if `scc` is missing, but the report will say so and recommend installing it.
+- [`syft`](https://github.com/anchore/syft) on `$PATH` for richer Conan (C/C++) dependency detection (both `conan.lock` v1 and v2 formats, plus `conaninfo.txt` and any checked-in vendor SBOM). Also not required, the script falls back to regex/JSON parsing of `conanfile.txt`/`conanfile.py`/`conan.lock` (v2 shape only) if `syft` is missing, reporting fewer resolved-dependency details for that one ecosystem.
 - Run from inside the repository being scanned. This skill needs real file access.
 
 ## Installation
@@ -190,6 +192,7 @@ host above.
 - All dependency counts are static approximations from parsing manifests/lockfiles, not a real dependency resolution. Treat them as a lower bound; run an SBOM tool for ground truth.
 - Private registry detection is host-based (anything not matching the ecosystem's known public default gets flagged), it can't identify which specific product (Artifactory, Nexus, GitHub Packages, etc.) is running there, only that something non-default is.
 - Without `scc` installed, language stats are a rough file/line count only, no comment/blank/complexity breakdown, and a smaller set of recognized file extensions.
+- C/C++'s `unversioned_signals` (CMakeLists.txt `find_package()`/`FetchContent_Declare()`, `.gitmodules` submodules) are a structural hint, not a real manifest entry, most have no version at all, or a `GIT_TAG` that's a branch name rather than a release. Never blended into `declared_dependencies`/`resolved_dependencies`, report them as their own clearly-labeled, low-confidence callout. Vendored/copy-pasted source trees, header-only libs, and statically-linked binaries aren't detected at all, that needs source fingerprinting or build-image scanning, a different tool shape entirely.
 - This is an inventory and capability-gap report, not a vulnerability scan. It doesn't find CVEs, misconfigurations, or code-level bugs, it tells you what kind of tool would.
 
 ## Next cabinet

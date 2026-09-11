@@ -35,13 +35,16 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cartridge_scan import walk, find_files, read_text, read_json, EXCLUDE_DIRS  # noqa: E402
+from cartridge_scan import (  # noqa: E402
+    walk, find_files, read_text, read_json, EXCLUDE_DIRS,
+    install_requires_from_setup_py, install_requires_from_setup_cfg,
+)
 import abandoned_packages  # noqa: E402
 
 USER_AGENT = "dead-weight-detector/1.0 (github.com/cameronww7/skill-sec-arcade)"
 
 SOURCE_EXTENSIONS = {
-    "npm": (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"),
+    "javascript": (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"),
     "python": (".py",),
     "go": (".go",),
     "java": (".java",),
@@ -50,20 +53,24 @@ SOURCE_EXTENSIONS = {
     "rust": (".rs",),
     "dotnet": (".cs",),
     "dart": (".dart",),
+    "cpp": (".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hh", ".hxx"),
 }
 
 # Ruby and PHP can't be matched reliably by static regex: Ruby's `require`
 # doesn't bind a symbol name at all (whatever the gem defines just becomes
 # globally available), and PHP namespaces are PSR-4-mapped by the package
-# author, not derivable from the composer package name. For these two we
-# only count require/use statement occurrences, not real call sites, and
-# flag the result as a "weak" signal downstream.
-WEAK_ECOSYSTEMS = {"ruby", "php"}
+# author, not derivable from the composer package name. C/C++'s #include
+# has the same problem: it doesn't bind a symbol either, and mapping a
+# header path to a package name (e.g. #include <fmt/format.h> -> "fmt") is
+# a convention, not a registry-enforced rule. For these three we only
+# count require/use/#include occurrences, not real call sites, and flag
+# the result as a "weak" signal downstream.
+WEAK_ECOSYSTEMS = {"ruby", "php", "cpp"}
 
 
 # --- dependency name extraction (new logic, not in cartridge_scan.py) ------
 
-def list_npm_deps(root):
+def list_javascript_deps(root):
     """Returns (name, manifest_path) pairs for every dependency listed in
     package.json (dependencies, devDependencies, peerDependencies,
     optionalDependencies). Only reads the first package.json found."""
@@ -126,6 +133,16 @@ def list_python_deps(root):
                 name = stripped_line.split("=", 1)[0].strip().strip('"\'')
                 if name:
                     dependencies.append((name, pipfile))
+    for setup_py_file in find_files(root, names={"setup.py"}):
+        for spec in (install_requires_from_setup_py(setup_py_file) or []):
+            name = re.split(r"[<>=!~;\[\s]", spec, maxsplit=1)[0].strip()
+            if name:
+                dependencies.append((name, setup_py_file))
+    for setup_cfg_file in find_files(root, names={"setup.cfg"}):
+        for spec in (install_requires_from_setup_cfg(setup_cfg_file) or []):
+            name = re.split(r"[<>=!~;\[\s]", spec, maxsplit=1)[0].strip()
+            if name:
+                dependencies.append((name, setup_cfg_file))
     return dependencies
 
 
@@ -176,6 +193,18 @@ def list_java_deps(root):
         for match in re.finditer(r"[\'\"]([\w.\-]+):([\w.\-]+):[\w.\-\[\],+]+[\'\"]", text):
             group_id, artifact_id = match.group(1), match.group(2)
             dependencies.append((group_id, gradle_file, f"{group_id}:{artifact_id}"))
+    for ivy_file in find_files(root, names={"ivy.xml"}):
+        text = read_text(ivy_file)
+        # Ivy doesn't guarantee org/name/rev attribute ordering the way
+        # positional regex-matching would assume, so each attribute is
+        # searched for independently within the tag's attribute blob.
+        for tag_match in re.finditer(r"<dependency\b([^>]*)/?>", text):
+            attrs = tag_match.group(1)
+            org_match = re.search(r'org="([^"]+)"', attrs)
+            name_match = re.search(r'name="([^"]+)"', attrs)
+            if org_match and name_match:
+                org, name = org_match.group(1), name_match.group(1)
+                dependencies.append((org, ivy_file, f"{org}:{name}"))
     return dependencies
 
 
@@ -226,11 +255,15 @@ def list_rust_deps(root):
 
 def list_dotnet_deps(root):
     """Returns (package_id, manifest_path) pairs from <PackageReference>
-    tags across every .csproj file."""
+    tags across every .csproj file, plus `nuget PackageName ...` lines in
+    paket.dependencies."""
     dependencies = []
     for csproj_file in find_files(root, suffixes=(".csproj",)):
         for match in re.finditer(r'<PackageReference\s+Include="([^"]+)"', read_text(csproj_file)):
             dependencies.append((match.group(1), csproj_file))
+    for paket_deps_file in find_files(root, names={"paket.dependencies"}):
+        for match in re.finditer(r"^\s*nuget\s+(\S+)", read_text(paket_deps_file), re.MULTILINE | re.IGNORECASE):
+            dependencies.append((match.group(1), paket_deps_file))
     return dependencies
 
 
@@ -255,8 +288,44 @@ def list_dart_deps(root):
     return dependencies
 
 
+def list_cpp_deps(root):
+    """Returns (package_name, manifest_path) pairs from Conan's
+    conanfile.txt [requires] section, conanfile.py self.requires() calls,
+    and vcpkg.json's "dependencies" array. Deliberately limited to these
+    two *direct*-dependency manifests, not conan.lock's transitive graph
+    and not the CMakeLists.txt/.gitmodules structural signals cartridge_scan.py
+    reports separately, usage/health scanning only makes sense for a real,
+    named, direct dependency."""
+    dependencies = []
+    for conanfile_txt in find_files(root, names={"conanfile.txt"}):
+        text = read_text(conanfile_txt)
+        in_requires_section = False
+        for line in text.splitlines():
+            stripped_line = line.strip()
+            if stripped_line.startswith("["):
+                in_requires_section = stripped_line in ("[requires]", "[build_requires]", "[tool_requires]")
+                continue
+            if in_requires_section and stripped_line and not stripped_line.startswith("#"):
+                name = stripped_line.split("/", 1)[0].strip()
+                if name:
+                    dependencies.append((name, conanfile_txt))
+    for conanfile_py in find_files(root, names={"conanfile.py"}):
+        text = read_text(conanfile_py)
+        for match in re.finditer(r"self\.(?:requires|build_requires|tool_requires)\(\s*['\"]([^/'\"]+)/", text):
+            dependencies.append((match.group(1), conanfile_py))
+    for vcpkg_json_file in find_files(root, names={"vcpkg.json"}):
+        data = read_json(vcpkg_json_file)
+        if isinstance(data, dict):
+            for dep in (data.get("dependencies") or []):
+                if isinstance(dep, str):
+                    dependencies.append((dep, vcpkg_json_file))
+                elif isinstance(dep, dict) and dep.get("name"):
+                    dependencies.append((dep["name"], vcpkg_json_file))
+    return dependencies
+
+
 LIST_DEPS = {
-    "npm": list_npm_deps,
+    "javascript": list_javascript_deps,
     "python": list_python_deps,
     "go": list_go_deps,
     "java": list_java_deps,
@@ -265,6 +334,7 @@ LIST_DEPS = {
     "rust": list_rust_deps,
     "dotnet": list_dotnet_deps,
     "dart": list_dart_deps,
+    "cpp": list_cpp_deps,
 }
 
 
@@ -394,6 +464,17 @@ def extract_dart(line):
     return None
 
 
+def extract_cpp(line):
+    """Matches `#include <path>` or `#include "path"`. Returns
+    (first_path_segment, []): a C/C++ header doesn't bind a named symbol
+    the way an import/use statement does, so this is a weak, path-based
+    signal only, see WEAK_ECOSYSTEMS."""
+    match = re.match(r'^\s*#include\s*[<"]([^>"]+)[>"]', line)
+    if match:
+        return match.group(1).split("/")[0], []
+    return None
+
+
 def extract_weak(pattern):
     """Wraps a simple require/use regex for the WEAK_ECOSYSTEMS, where no
     real bound symbol name can be recovered, only the fact of the import."""
@@ -406,7 +487,7 @@ def extract_weak(pattern):
 
 
 EXTRACTORS = {
-    "npm": extract_js,
+    "javascript": extract_js,
     "python": extract_python,
     "go": extract_go,
     "java": extract_java,
@@ -415,6 +496,7 @@ EXTRACTORS = {
     "rust": extract_rust,
     "dotnet": extract_dotnet,
     "dart": extract_dart,
+    "cpp": extract_cpp,
 }
 
 
@@ -422,7 +504,7 @@ def module_matches(ecosystem, module_key, dep_name, dep_match_key=None):
     """Does an import's module_key (from an EXTRACTORS function) refer to
     dep_name (a name from a LIST_DEPS function)? Ecosystem-specific because
     every language resolves an import string to a package name differently."""
-    if ecosystem == "npm":
+    if ecosystem == "javascript":
         # Scoped packages ("@scope/pkg/sub/path") match on the first two
         # path segments; unscoped packages match on the first segment only.
         if module_key.startswith("@"):
@@ -461,6 +543,12 @@ def module_matches(ecosystem, module_key, dep_name, dep_match_key=None):
         guessed_namespace = "".join(p.capitalize() for p in re.split(r"[-_]", vendor)) + "\\" + \
             "".join(p.capitalize() for p in re.split(r"[-_]", package))
         return module_key.startswith(guessed_namespace.split("\\")[0])
+    if ecosystem == "cpp":
+        # Header path's first segment vs. the Conan/vcpkg package name, a
+        # best-effort convention (e.g. #include <fmt/format.h> -> "fmt"),
+        # not guaranteed since header layout is author-chosen, not
+        # registry-enforced.
+        return module_key.lower() == dep_name.lower()
     return False
 
 
@@ -595,7 +683,7 @@ def run_usage(root):
 # not "no version." None of these are real lockfile parsers, they're
 # regex/JSON-key lookups scoped to exactly the fields needed here.
 
-def resolve_version_npm(root, name):
+def resolve_version_javascript(root, name):
     """Resolved version from package-lock.json, yarn.lock, or
     pnpm-lock.yaml, tried in that order, first match wins."""
     version = _resolve_version_package_lock_json(root, name)
@@ -682,17 +770,29 @@ def _resolve_version_pnpm_lock(root, name):
 
 
 def resolve_version_python(root, name):
-    """Resolved version from a pinned requirements.txt line, poetry.lock,
-    or Pipfile.lock, tried in that order, first match wins."""
+    """Resolved version from a pinned requirements.txt/setup.py/setup.cfg
+    line, poetry.lock, uv.lock, or Pipfile.lock, tried in that order,
+    first match wins."""
     for requirements_file in find_files(root, suffixes=("requirements.txt",)):
         for line in read_text(requirements_file).splitlines():
             match = re.match(r"^\s*" + re.escape(name) + r"\s*==\s*(\S+)", line, re.IGNORECASE)
             if match:
                 return match.group(1)
-    for lockfile in find_files(root, names={"poetry.lock"}):
+    for setup_cfg_file in find_files(root, names={"setup.cfg"}):
+        for spec in (install_requires_from_setup_cfg(setup_cfg_file) or []):
+            match = re.match(r"^\s*" + re.escape(name) + r"\s*==\s*(\S+)", spec, re.IGNORECASE)
+            if match:
+                return match.group(1)
+    for setup_py_file in find_files(root, names={"setup.py"}):
+        for spec in (install_requires_from_setup_py(setup_py_file) or []):
+            match = re.match(r"^\s*" + re.escape(name) + r"\s*==\s*(\S+)", spec, re.IGNORECASE)
+            if match:
+                return match.group(1)
+    for lockfile in find_files(root, names={"poetry.lock"}) + find_files(root, names={"uv.lock"}):
         text = read_text(lockfile)
-        # poetry.lock is TOML, but a full parser is overkill for pulling
-        # two fields: split into [[package]] blocks and regex each one.
+        # poetry.lock/uv.lock are both TOML with the same [[package]] block
+        # shape, a full parser is overkill for pulling two fields: split
+        # into [[package]] blocks and regex each one.
         for block in re.split(r"^\[\[package\]\]\s*$", text, flags=re.MULTILINE):
             name_match = re.search(r'^name\s*=\s*"([^"]+)"', block, re.MULTILINE)
             version_match = re.search(r'^version\s*=\s*"([^"]+)"', block, re.MULTILINE)
@@ -775,8 +875,9 @@ def resolve_version_dart(root, name):
 
 def resolve_version_java(root, group_artifact):
     """Resolved/declared version for a "group:artifact" pair, from an
-    explicit <version> tag in pom.xml or the version segment of a Gradle
-    "group:artifact:version" dependency string."""
+    explicit <version> tag in pom.xml, the version segment of a Gradle
+    "group:artifact:version" dependency string, or an ivy.xml
+    <dependency>'s rev="..." attribute."""
     group_id, _, artifact_id = group_artifact.partition(":")
     for pom_file in find_files(root, names={"pom.xml"}):
         text = read_text(pom_file)
@@ -791,25 +892,64 @@ def resolve_version_java(root, group_artifact):
             read_text(gradle_file))
         if match:
             return match.group(1)
+    for ivy_file in find_files(root, names={"ivy.xml"}):
+        text = read_text(ivy_file)
+        for tag_match in re.finditer(r"<dependency\b([^>]*)/?>", text):
+            attrs = tag_match.group(1)
+            if re.search(r'org="' + re.escape(group_id) + r'"', attrs) and \
+                    re.search(r'name="' + re.escape(artifact_id) + r'"', attrs):
+                rev_match = re.search(r'rev="([^"]+)"', attrs)
+                if rev_match:
+                    return rev_match.group(1)
     return None
 
 
 def resolve_version_dotnet(root, name):
     """Declared version from the matching <PackageReference>'s Version
-    attribute in a .csproj file (no NuGet lockfile to prefer over it)."""
+    attribute in a .csproj file, or the resolved version from paket.lock's
+    "Name (Version)" entry (same 4-space-indent convention as
+    resolve_version_ruby)."""
     for csproj_file in find_files(root, suffixes=(".csproj",)):
         match = re.search(
             r'<PackageReference\s+Include="' + re.escape(name) + r'"\s+Version="([^"]+)"',
             read_text(csproj_file))
         if match:
             return match.group(1)
+    for paket_lock_file in find_files(root, names={"paket.lock"}):
+        match = re.search(r"^\s{4}" + re.escape(name) + r"\s+\(([^)]+)\)", read_text(paket_lock_file), re.MULTILINE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def resolve_version_cpp(root, name):
+    """Resolved version from conan.lock's requires list ("name/version#rev%ts"
+    reference strings, Conan 2.x lockfile shape only), or the version
+    pinned directly in conanfile.txt's [requires] line if no lockfile
+    match. Returns None for vcpkg-only projects: vcpkg pins via
+    builtin-baseline in vcpkg.json, not a per-package version, so there's
+    honestly nothing to resolve there."""
+    for lockfile in find_files(root, names={"conan.lock"}):
+        data = read_json(lockfile)
+        if isinstance(data, dict):
+            for key in ("requires", "build_requires", "tool_requires"):
+                for ref in (data.get(key) or []):
+                    if isinstance(ref, str) and ref.split("/", 1)[0] == name:
+                        version = ref.split("/", 1)[1].split("#")[0].split("%")[0]
+                        if version:
+                            return version
+    for conanfile_txt in find_files(root, names={"conanfile.txt"}):
+        match = re.search(r"^\s*" + re.escape(name) + r"/([^\s#]+)", read_text(conanfile_txt), re.MULTILINE)
+        if match:
+            return match.group(1)
     return None
 
 
 RESOLVE_VERSION = {
-    "npm": resolve_version_npm, "python": resolve_version_python, "go": resolve_version_go,
+    "javascript": resolve_version_javascript, "python": resolve_version_python, "go": resolve_version_go,
     "rust": resolve_version_rust, "ruby": resolve_version_ruby, "php": resolve_version_php,
     "dart": resolve_version_dart, "java": resolve_version_java, "dotnet": resolve_version_dotnet,
+    "cpp": resolve_version_cpp,
 }
 
 
@@ -852,9 +992,9 @@ def http_json(url, method="GET", data=None, headers=None, timeout=10):
 
 
 OSV_ECOSYSTEM = {
-    "npm": "npm", "python": "PyPI", "go": "Go", "rust": "crates.io",
+    "javascript": "npm", "python": "PyPI", "go": "Go", "rust": "crates.io",
     "ruby": "RubyGems", "php": "Packagist", "java": "Maven", "dotnet": "NuGet",
-    "dart": "Pub",
+    "dart": "Pub", "cpp": "ConanCenter",
 }
 
 
@@ -876,7 +1016,7 @@ def check_osv(ecosystem, name, version=None):
     return {"status": "ok", "vulnerabilities": vulnerability_ids, "version_scoped": bool(version)}
 
 
-def health_npm(name):
+def health_javascript(name):
     """Latest publish time, maintainer count, and declared-deprecation
     message (if any) from the npm registry metadata endpoint, plus
     last-month downloads from npm's stats API. A maintainer-set
@@ -1078,10 +1218,23 @@ def health_dart(name):
     }
 
 
+def health_cpp(_name):
+    """Neither ConanCenter nor vcpkg expose a public metadata API
+    comparable to npm/PyPI/crates.io, so recency/maintainers/downloads
+    honestly report unavailable here rather than a guess. The OSV
+    vulnerability check still runs independently in run_health() (it's
+    the one live signal available for this ecosystem)."""
+    return {
+        "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
+        "registry_status": "unavailable",
+    }
+
+
 HEALTH_FN = {
-    "npm": health_npm, "python": health_python, "go": health_go,
+    "javascript": health_javascript, "python": health_python, "go": health_go,
     "rust": health_rust, "ruby": health_ruby, "php": health_php,
     "java": health_java, "dotnet": health_dotnet, "dart": health_dart,
+    "cpp": health_cpp,
 }
 
 

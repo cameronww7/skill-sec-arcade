@@ -26,12 +26,12 @@ If the user just wants an inventory (what exists, how many, what package manager
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py usage <path>
 ```
 
-Fully local, no network. Returns every direct dependency across all nine ecosystems `cartridge-scanner` covers (npm/yarn/pnpm, Python, Go, Java, Ruby, PHP, Rust, .NET, Dart), each with `files_importing`, `call_site_count`, `distinct_symbols_used`, and a computed `usage_tier` (`minimal` / `light` / `moderate` / `heavy`).
+Fully local, no network. Returns every direct dependency across all ten ecosystems `cartridge-scanner` covers (JavaScript via npm/yarn/pnpm, Python, Go, Java, Ruby, PHP, Rust, .NET, Dart, C/C++), each with `files_importing`, `call_site_count`, `distinct_symbols_used`, and a computed `usage_tier` (`minimal` / `light` / `moderate` / `heavy`).
 
 These tiers are a starting heuristic, not a precise measurement. Two known sources of noise, say so if a specific result looks off rather than trusting the number blindly:
 
 - **Regex-based symbol counting can overcount** when a bound identifier's name also appears inside the import path/module string itself (e.g. a package literally named the same as its own path segment). Read the actual call sites in Step 4 before trusting a borderline number.
-- **Ruby and PHP get a weaker signal** (`"usage_signal": "weak"` in the output). Dynamic dispatch and PSR-4 autoloading defeat static symbol matching, so their `call_site_count` is really just a `require`/`use` occurrence count, not real usage depth. Treat these two ecosystems' results as a starting point for manual review, not a verdict input on their own.
+- **Ruby, PHP, and C/C++ get a weaker signal** (`"usage_signal": "weak"` in the output). Dynamic dispatch and PSR-4 autoloading defeat static symbol matching for Ruby/PHP; a C/C++ `#include` doesn't bind a symbol at all, and mapping a header path to a Conan/vcpkg package name is a convention, not a registry-enforced rule. All three ecosystems' `call_site_count` is really just a `require`/`use`/`#include` occurrence count, not real usage depth. Treat these results as a starting point for manual review, not a verdict input on their own.
 
 ## Step 2: Full usage-tier table
 

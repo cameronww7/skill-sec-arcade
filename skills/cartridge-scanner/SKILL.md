@@ -47,6 +47,8 @@ Build a table from `package_managers[]`: ecosystem, manifest file(s), lockfile(s
 
 If a manifest exists with no matching lockfile for an ecosystem that normally has one (e.g. `package.json` with no `package-lock.json`/`yarn.lock`/`pnpm-lock.yaml`), that's worth a line in Step 8, not here.
 
+The C/C++ (`cpp`) entry may carry an `unversioned_signals` list (CMakeLists.txt `find_package()`/`FetchContent_Declare()` calls, `.gitmodules` submodules). These aren't real manifest entries, most have no pinned version at all, so never fold them into this table's Declared/Resolved Deps columns. When present, surface them as their own separate "Unconfirmed C/C++ Signals" callout right after this table, explicitly labeled unversioned/low-confidence, naming the source (`find_package`, `FetchContent_Declare`, or `gitmodules`) per entry.
+
 ## Step 5: Private registry callout
 
 Only include this section if `private_registries[]` is non-empty, no "none found" filler.
@@ -74,7 +76,7 @@ Private registry findings already got their own dedicated step (Step 5), don't r
 
 ## Step 9: Scanning coverage recommendations
 
-Using `${CLAUDE_PLUGIN_ROOT}/references/security-scan-capability-map.md`, pull the rows that match what was actually found in Steps 2-7, plus the Secrets and SBOM rows, which apply unconditionally to any repo regardless of what else was found. Frame every line as a capability gap, not a product pick: "no SCA coverage confirmed for the npm dependency tree," not "install X." **Never name a specific tool or vendor in this section**, that's a deliberate project-wide choice, not an oversight, the point is to tell the reader what capability they're missing, not what to buy.
+Using `${CLAUDE_PLUGIN_ROOT}/references/security-scan-capability-map.md`, pull the rows that match what was actually found in Steps 2-7, plus the Secrets and SBOM rows, which apply unconditionally to any repo regardless of what else was found. Frame every line as a capability gap, not a product pick: "no SCA coverage confirmed for the JavaScript/npm dependency tree," not "install X." **Never name a specific tool or vendor in this section**, that's a deliberate project-wide choice, not an oversight, the point is to tell the reader what capability they're missing, not what to buy.
 
 When an ecosystem was flagged in Step 5, its SCA row here explicitly repeats the caveat: the coverage recommendation only holds if the tool can actually reach and authenticate to that private registry.
 
@@ -110,6 +112,12 @@ whether scc was available or the fallback was used.]
 | Ecosystem | Manifest | Lockfile | Declared Deps | Resolved Deps (approx) |
 |---|---|---|---|---|
 [one row per ecosystem found; note the approximation caveat once]
+
+## Unconfirmed C/C++ Signals
+
+[only if the cpp entry's unversioned_signals is non-empty; one line per
+signal, name + source (find_package/FetchContent_Declare/gitmodules) +
+file, explicitly labeled low-confidence/unversioned]
 
 ## Private Registries
 
