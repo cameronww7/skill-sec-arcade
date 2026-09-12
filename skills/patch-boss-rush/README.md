@@ -144,6 +144,8 @@ Action: apply the parameterized query, then review the diff.
 
 For the deliberate, context-aware path, app context loaded, dependency staleness weighed, before deciding how to fix, see [`patch-for-the-high-score`](../patch-for-the-high-score).
 
+For a container image finding (base image, build-installed binary, buildpack/builder, vendor image, sidecar, or image config), see [`cargo-hold-cleanup`](../cargo-hold-cleanup) instead.
+
 ## License
 
 [CC BY-SA 4.0](../../LICENSE), same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).

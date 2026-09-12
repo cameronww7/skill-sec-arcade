@@ -166,6 +166,8 @@ Action: apply the parameterized query, then review the diff.
 
 For a faster, standalone pass on a probably-simple finding, without loading app context or dependency health data, see [`patch-boss-rush`](../patch-boss-rush).
 
+For a container image finding (base image, build-installed binary, buildpack/builder, vendor image, sidecar, or image config), see [`cargo-hold-cleanup`](../cargo-hold-cleanup) instead, it has ownership-resolution and no-fix-available logic this skill doesn't carry.
+
 ## License
 
 [CC BY-SA 4.0](../../LICENSE), same house rules as the rest of [skill-sec-arcade](https://github.com/cameronww7/skill-sec-arcade).

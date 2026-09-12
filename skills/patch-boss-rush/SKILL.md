@@ -19,6 +19,8 @@ Not every finding needs the full ceremony. A single obvious SQL injection in one
 
 If the finding is genuinely complex, touches security-sensitive business logic, or the user wants dependency staleness/tech-debt considered as part of an SCA fix, that's [`patch-for-the-high-score`](../patch-for-the-high-score) instead, it loads real app context and dependency health data before deciding.
 
+If the finding is a container image finding (base image OS package, build-installed binary, buildpack/builder, vendor image, sidecar, or image config like running as root), that's [`cargo-hold-cleanup`](../cargo-hold-cleanup) instead, it has ownership-resolution and no-fix-available logic this skill doesn't carry. A container scan finding that turns out to be an application dependency still belongs here or with `patch-for-the-high-score`, `cargo-hold-cleanup` hands those off rather than fixing them itself.
+
 On a bare "fix this" with no urgency/speed signal either way, default to `patch-for-the-high-score`, the safer, context-loaded path. Only take this skill when the request itself signals speed ("quick," "just," "rush") or explicitly opts out of the full workflow.
 
 ## Step 1: Parse & smoke test
@@ -32,6 +34,8 @@ Confirm this is a git repo (`git rev-parse --show-toplevel`), confirm the curren
 - **First-party** (SAST, IaC, DAST): code or config this team wrote.
 - **OSS dependency** (SCA): a third-party package.
 - **Secret**: its own bucket regardless of source tool, it gets the rotation callout below instead of a full investigation.
+
+A finding whose root cause is the container image itself (base image, build-installed binary, image config) isn't any of these three, hand it to [`cargo-hold-cleanup`](../cargo-hold-cleanup) instead.
 
 ## Step 3: Quick check
 

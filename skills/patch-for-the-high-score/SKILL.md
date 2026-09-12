@@ -23,6 +23,8 @@ The outcomes here are not symmetric. Investigating a finding and drafting a fix 
 
 If the user wants speed over ceremony on a finding that's probably simple, that's [`patch-boss-rush`](../patch-boss-rush) instead, it does its own lightweight version of this without loading any other skill's artifacts.
 
+If the finding is a container image finding (base image OS package, build-installed binary, buildpack/builder, vendor image, sidecar, or image config like running as root), that's [`cargo-hold-cleanup`](../cargo-hold-cleanup) instead, it has its own ownership-resolution and no-fix-available logic this skill doesn't carry. A container scan finding that resolves to an application dependency (npm/pip/maven/go/gem/cargo) still belongs here, `cargo-hold-cleanup` hands those off to this skill by design.
+
 On a bare "fix this" with no urgency/speed signal either way, this is the default: the safer, context-loaded path.
 
 ## Step 1: Setup & intake
@@ -42,6 +44,8 @@ Every finding lands in exactly one of three buckets, each driving a different pa
 - **First-party** (SAST, IaC, DAST): code or config this team wrote.
 - **OSS dependency** (SCA): a third-party package.
 - **Secret**: its own bucket regardless of which tool flagged it, it needs a faster, different response than the investigate-then-plan-a-code-fix flow the other two buckets get.
+
+A finding whose root cause is the container image itself (base image, build-installed binary, image config) isn't any of these three, hand it to [`cargo-hold-cleanup`](../cargo-hold-cleanup) instead of forcing it into one of these buckets.
 
 ## Step 3: Analyze & decide
 
