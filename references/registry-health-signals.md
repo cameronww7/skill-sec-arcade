@@ -62,6 +62,29 @@ OSV ecosystem-name mapping (the string OSV expects, not always the same as the n
 
 **Version scoping matters.** Querying OSV without a version returns every vulnerability ever reported against the package, across its entire release history, not just ones affecting the version actually pinned in the lockfile. `dead_weight_scan.py` resolves the pinned version from the local lockfile before querying whenever it can; when it can't, the result is reported for awareness only and is marked `"version_scoped": false`, it does not by itself push a dependency to the At Risk tier.
 
+## GitHub-archived check: repository-level, GitHub-only
+
+`dead_weight_scan.py`'s `run_health()` also tries to resolve each package's repository URL out of the registry metadata it already fetches, and if that URL points at `github.com`, makes one `GET api.github.com/repos/<owner>/<repo>` call to read that repository's `archived` flag. A maintainer archiving a repository (making it permanently read-only) is a more direct abandonment signal than anything inferred from release recency or maintainer count alone.
+
+This is honestly partial coverage, not a guess dressed up as one:
+
+| Ecosystem | Repository URL source |
+|---|---|
+| JavaScript (npm) | Registry metadata's `repository` field |
+| Python (PyPI) | `info.project_urls` values (scanned for a `github.com` match), falling back to `info.home_page` |
+| Go | The module path itself, when it starts with `github.com/` |
+| Rust (crates.io) | The crate metadata's `repository` field |
+| Ruby (RubyGems) | `source_code_uri`, falling back to `homepage_uri` |
+| PHP (Packagist) | The package-info endpoint's `repository` field |
+| Java (Maven, Gradle, Ivy) | Not resolved; Maven Central's search API has no source-URL field without an extra POM fetch this tool doesn't make |
+| .NET (NuGet, Paket) | The latest catalog entry's `projectUrl`, when NuGet has one on file |
+| Dart (pub.dev) | The latest version's pubspec `repository`, falling back to `homepage` |
+| C/C++ (Conan, vcpkg) | Not resolved; no registry metadata API exists here at all |
+
+A package hosted on GitLab, Bitbucket, or a self-hosted git server, or one whose registry metadata simply doesn't list a repository URL, reports `"archived": null` honestly rather than a guess, this check is GitHub-only by design. GitHub's unauthenticated API is rate-limited to 60 requests/hour, so this call is only made for the already-bounded set of packages a skill passes to `run_health()`, never once per every dependency in a repo.
+
+`archived` is **not** factored into `health_tier` below; that computation is unchanged and shared with `patch-for-the-high-score`. `dead-weight-detector` uses the raw `archived` field on its own for its Status classification, see its own `SKILL.md`.
+
 ## Health tier thresholds
 
 - **Healthy**: last release under 3 months old AND (2+ maintainers OR 10,000+ monthly downloads) AND no version-scoped OSV match.

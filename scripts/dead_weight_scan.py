@@ -2877,6 +2877,126 @@ def check_osv(ecosystem, name, version=None):
     return {"status": "ok", "vulnerabilities": vulnerability_ids, "version_scoped": bool(version)}
 
 
+# Matches github.com owner/repo out of any of the URL shapes a package
+# registry might store: a plain https URL, an npm-style "git+https://...git"
+# value, a bare "git://...git" value, or an SSH "git@github.com:owner/repo"
+# value. Group 1 is the owner, group 2 is the repo name with any trailing
+# ".git" already excluded by the character class.
+GITHUB_REPOSITORY_URL_PATTERN = re.compile(r"github\.com[:/]+([^/\s]+)/([^/\s.]+)")
+
+################################################################################
+# FUNCTION: extract_github_owner_and_repo
+#
+# PURPOSE
+#     Pulls a GitHub owner/repo pair out of a repository URL string, in
+#     whatever shape a package registry happens to store it in. This is
+#     the first half of archived-repository detection: before GitHub's
+#     API can be asked whether a repository is archived, its owner and
+#     repo name have to be recovered from whatever URL format the
+#     registry returned.
+#
+# RESPONSIBILITIES
+#     - Handle every repository URL shape actually seen across this
+#       file's supported registries (npm's "git+https://...git", a
+#       plain https URL, a bare "git://...git" URL, and an SSH
+#       "git@github.com:owner/repo" URL).
+#     - Return None for anything that isn't a github.com URL at all,
+#       rather than guessing.
+#
+# PROCESS OVERVIEW
+#     1. If url is empty or not a string, return None immediately.
+#     2. Match it against the github.com owner/repo pattern.
+#     3. If it matched, return the owner and repo as a tuple.
+#     4. If it didn't match, return None.
+#
+# IMPORTANT DETAILS
+#     - This only recognizes github.com URLs. A package hosted on
+#       GitLab, Bitbucket, or a self-hosted git server correctly
+#       returns None here, archived-status detection is GitHub-only by
+#       design, see check_github_repository_archived().
+#
+# PARAMETERS
+#     url (str or None)
+#         A repository URL in any of the shapes described above, or any
+#         other value, non-github.com URLs and falsy values both
+#         resolve to None.
+#
+# RETURNS
+#     tuple[str, str] or None
+#         (owner, repo) if url is a recognizable github.com URL, else
+#         None.
+#
+# FAILURE CASES
+#     - url is empty, None, or not a github.com URL: returns None.
+################################################################################
+def extract_github_owner_and_repo(url):
+    """Pulls (owner, repo) out of a github.com URL in any of the shapes a
+    package registry might store it in, or None if url isn't a github.com
+    URL at all."""
+    if not isinstance(url, str) or not url:
+        return None
+    match = GITHUB_REPOSITORY_URL_PATTERN.search(url)
+    if not match:
+        return None
+    return match.group(1), match.group(2)
+
+
+################################################################################
+# FUNCTION: check_github_repository_archived
+#
+# PURPOSE
+#     Asks the GitHub API whether a given repository is archived
+#     (read-only, no further commits possible). A maintainer archiving
+#     a repository is a stronger, more direct abandonment signal than
+#     anything inferred from release recency or maintainer count alone.
+#
+# RESPONSIBILITIES
+#     - Make one GitHub API call for the given owner/repo.
+#     - Return the repository's archived flag, or None if it can't be
+#       determined.
+#
+# PROCESS OVERVIEW
+#     1. Request the repository's metadata from the GitHub API.
+#     2. If the request failed for any reason, return None.
+#     3. Otherwise, return the response's "archived" field.
+#
+# IMPORTANT DETAILS
+#     - GitHub's unauthenticated API is rate-limited to 60 requests per
+#       hour per IP address. Callers must keep this scoped to an
+#       already-bounded set of packages (see run_health()'s triage
+#       cap), never called once per every dependency in a repo.
+#     - A rate-limited or otherwise failed request looks identical to
+#       "repository not found" here (both return None), since
+#       http_json() collapses every non-404 failure the same way. A
+#       None result honestly means "couldn't determine," not
+#       "confirmed not archived."
+#
+# PARAMETERS
+#     owner (str)
+#         The GitHub organization or user that owns the repository.
+#     repo (str)
+#         The repository name.
+#
+# RETURNS
+#     bool or None
+#         True or False if the repository's archived status was
+#         determined, None if the lookup failed for any reason.
+#
+# FAILURE CASES
+#     - Repository not found, rate-limited, or a network/timeout error:
+#       returns None.
+################################################################################
+def check_github_repository_archived(owner, repo):
+    """One GitHub API call for a repository's archived flag, or None if the
+    lookup failed for any reason (not found, rate-limited, network error).
+    Callers must keep this scoped to an already-bounded package set, see
+    this function's own rate-limit note above."""
+    repository_data, _not_found = http_json(f"https://api.github.com/repos/{owner}/{repo}")
+    if repository_data is None:
+        return None
+    return repository_data.get("archived")
+
+
 ################################################################################
 # FUNCTION: health_javascript
 #
@@ -2904,6 +3024,9 @@ def check_osv(ecosystem, name, version=None):
 #     - A maintainer-set `deprecated` message on the latest version is
 #       a stronger abandonment signal than anything inferred from
 #       recency/maintainers/downloads alone; see health_tier().
+#     - npm's "repository" field is sometimes a plain string and
+#       sometimes a dict with its own "url" key; both shapes are
+#       normalized to a plain string here.
 #
 # PARAMETERS
 #     name (str)
@@ -2913,7 +3036,8 @@ def check_osv(ecosystem, name, version=None):
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": int or
 #         None, "downloads": int or None, "deprecated": str or None,
-#         "registry_status": "ok"|"not_found"|"failed"}.
+#         "repository_url": str or None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - Registry metadata request fails: registry_status is
@@ -2935,16 +3059,24 @@ def health_javascript(name):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": None, "downloads": None, "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": None, "registry_status": registry_status,
         }
     latest_version = (registry_data.get("dist-tags") or {}).get("latest")
     publish_times = registry_data.get("time") or {}
     version_meta = (registry_data.get("versions") or {}).get(latest_version) or {}
+    # npm's "repository" field is sometimes a plain string and sometimes a
+    # dict with its own "url" key; both shapes are normalized here.
+    repository_field = registry_data.get("repository")
+    if isinstance(repository_field, dict):
+        repository_url = repository_field.get("url")
+    else:
+        repository_url = repository_field
     return {
         "recency": publish_times.get(latest_version),
         "maintainers": len(registry_data.get("maintainers") or []),
         "downloads": (downloads_data or {}).get("downloads"),
         "deprecated": version_meta.get("deprecated"),
+        "repository_url": repository_url,
         "registry_status": "ok",
     }
 
@@ -2983,6 +3115,10 @@ def health_javascript(name):
 #     - PyPI's own API stopped exposing download counts years ago;
 #       pypistats.org is a third-party service that fills that gap,
 #       best-effort.
+#     - "repository_url" is found by scanning info.project_urls'
+#       values (a free-form label -> URL map with no consistent key
+#       naming across packages) for a github.com URL, falling back to
+#       info.home_page if none of them match.
 #
 # PARAMETERS
 #     name (str)
@@ -2992,7 +3128,8 @@ def health_javascript(name):
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": "n/a",
 #         "downloads": int or None, "deprecated": str or None,
-#         "registry_status": "ok"|"not_found"|"failed"}.
+#         "repository_url": str or None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - PyPI JSON API request fails: registry_status is "not_found"
@@ -3013,10 +3150,11 @@ def health_python(name):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": None, "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": None, "registry_status": registry_status,
         }
     releases = registry_data.get("releases") or {}
-    latest_version = (registry_data.get("info") or {}).get("version")
+    package_info = registry_data.get("info") or {}
+    latest_version = package_info.get("version")
     release_files = releases.get(latest_version) or []
     upload_time = None
     for release_file in release_files:
@@ -3031,9 +3169,20 @@ def health_python(name):
     downloads = None
     if downloads_data:
         downloads = (downloads_data.get("data") or {}).get("last_month")
+    # project_urls is a free-form label -> URL map (labels like "Source",
+    # "Homepage", "Repository", "GitHub" all appear in the wild with no
+    # consistent naming), so every value is scanned for a github.com match
+    # rather than trusting one specific label to be present.
+    repository_url = None
+    candidate_urls = list((package_info.get("project_urls") or {}).values())
+    candidate_urls.append(package_info.get("home_page"))
+    for candidate_url in candidate_urls:
+        if candidate_url and GITHUB_REPOSITORY_URL_PATTERN.search(candidate_url):
+            repository_url = candidate_url
+            break
     return {
         "recency": upload_time, "maintainers": "n/a", "downloads": downloads,
-        "deprecated": deprecated, "registry_status": "ok",
+        "deprecated": deprecated, "repository_url": repository_url, "registry_status": "ok",
     }
 
 
@@ -3066,6 +3215,11 @@ def health_python(name):
 #       separate, more complex scheme not implemented here; this
 #       simple .lower() is correct for the overwhelming majority of
 #       real-world module paths.
+#     - The module proxy exposes no repository metadata, but a Go
+#       module path that starts with "github.com/" conventionally *is*
+#       its own GitHub repository path, so repository_url is derived
+#       directly from the module path rather than from any fetched
+#       data.
 #
 # PARAMETERS
 #     name (str)
@@ -3074,8 +3228,8 @@ def health_python(name):
 # RETURNS
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": "n/a",
-#         "downloads": "n/a", "deprecated": None, "registry_status":
-#         "ok"|"not_found"|"failed"}.
+#         "downloads": "n/a", "deprecated": None, "repository_url": str
+#         or None, "registry_status": "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - Module proxy request fails: registry_status is "not_found"
@@ -3091,6 +3245,13 @@ def health_go(name):
     # more complex scheme not implemented here; this simple .lower() is
     # correct for the overwhelming majority of real-world module paths).
     module_path = name.lower()
+    # The module proxy exposes no repository metadata, but a module path
+    # that starts with "github.com/" conventionally *is* its own GitHub
+    # repository path.
+    if module_path.startswith("github.com/"):
+        repository_url = f"https://{module_path}"
+    else:
+        repository_url = None
     registry_data, not_found = http_json(f"https://proxy.golang.org/{module_path}/@latest")
     if registry_data is None:
         if not_found:
@@ -3099,11 +3260,11 @@ def health_go(name):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": repository_url, "registry_status": registry_status,
         }
     return {
         "recency": registry_data.get("Time"), "maintainers": "n/a", "downloads": "n/a",
-        "deprecated": None, "registry_status": "ok",
+        "deprecated": None, "repository_url": repository_url, "registry_status": "ok",
     }
 
 
@@ -3141,7 +3302,8 @@ def health_go(name):
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": int or
 #         None, "downloads": int or None, "deprecated": None,
-#         "registry_status": "ok"|"not_found"|"failed"}.
+#         "repository_url": str or None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - Crate metadata request fails: registry_status is "not_found"
@@ -3160,7 +3322,7 @@ def health_rust(name):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": None, "downloads": None, "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": None, "registry_status": registry_status,
         }
     crate = registry_data.get("crate") or {}
     owners_data, _ = http_json(f"https://crates.io/api/v1/crates/{name}/owners")
@@ -3173,6 +3335,7 @@ def health_rust(name):
         "maintainers": maintainer_count,
         "downloads": crate.get("downloads"),
         "deprecated": None,
+        "repository_url": crate.get("repository"),
         "registry_status": "ok",
     }
 
@@ -3211,7 +3374,8 @@ def health_rust(name):
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": str,
 #         "downloads": int or None, "deprecated": None,
-#         "registry_status": "ok"|"not_found"|"failed"}.
+#         "repository_url": str or None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - Gem metadata request fails: registry_status is "not_found"
@@ -3230,13 +3394,14 @@ def health_ruby(name):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a (authors string, not a count)", "downloads": None,
-            "deprecated": None, "registry_status": registry_status,
+            "deprecated": None, "repository_url": None, "registry_status": registry_status,
         }
     return {
         "recency": registry_data.get("version_created_at"),
         "maintainers": registry_data.get("authors", "n/a"),
         "downloads": registry_data.get("downloads"),
         "deprecated": None,
+        "repository_url": registry_data.get("source_code_uri") or registry_data.get("homepage_uri"),
         "registry_status": "ok",
     }
 
@@ -3268,6 +3433,8 @@ def health_ruby(name):
 #     - Packagist exposes no download volume or deprecation flag in
 #       this API, so "downloads" is always "n/a" and "deprecated" is
 #       always None here.
+#     - repository_url comes from the same package-info endpoint
+#       already fetched for maintainer count, no extra request needed.
 #
 # PARAMETERS
 #     vendor_pkg (str)
@@ -3277,7 +3444,8 @@ def health_ruby(name):
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": int or
 #         None, "downloads": "n/a", "deprecated": None,
-#         "registry_status": "ok"|"not_found"|"failed"}.
+#         "repository_url": str or None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - v2 metadata request fails: registry_status is "not_found"
@@ -3297,17 +3465,20 @@ def health_php(vendor_pkg):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": None, "downloads": "n/a", "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": None, "registry_status": registry_status,
         }
     versions = ((registry_data.get("packages") or {}).get(vendor_pkg) or [])
     recency = versions[0].get("time") if versions else None
     maintainers_data, _ = http_json(f"https://packagist.org/packages/{vendor_pkg}.json")
     maintainer_count = None
+    repository_url = None
     if maintainers_data:
-        maintainer_count = len((maintainers_data.get("package") or {}).get("maintainers") or [])
+        package_info = maintainers_data.get("package") or {}
+        maintainer_count = len(package_info.get("maintainers") or [])
+        repository_url = package_info.get("repository")
     return {
         "recency": recency, "maintainers": maintainer_count, "downloads": "n/a",
-        "deprecated": None, "registry_status": "ok",
+        "deprecated": None, "repository_url": repository_url, "registry_status": "ok",
     }
 
 
@@ -3341,6 +3512,11 @@ def health_php(vendor_pkg):
 #     - recency here is a raw Maven Central index timestamp
 #       (milliseconds since epoch), not an ISO 8601 string like most
 #       other ecosystems' health_* functions return.
+#     - repository_url is always None here. The Maven Central search
+#       API used for recency doesn't return an artifact's source-code
+#       URL; getting one would require fetching and parsing the
+#       artifact's POM file, an extra request this function
+#       deliberately doesn't make.
 #
 # PARAMETERS
 #     group_artifact (str)
@@ -3351,7 +3527,8 @@ def health_php(vendor_pkg):
 #     dict
 #         {"recency": epoch-millisecond timestamp or None,
 #         "maintainers": "n/a", "downloads": "n/a", "deprecated":
-#         None, "registry_status": "ok"|"not_found"|"failed"}.
+#         None, "repository_url": None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - Search API request fails: registry_status is "not_found"
@@ -3375,13 +3552,13 @@ def health_java(group_artifact):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": None, "registry_status": registry_status,
         }
     docs = ((registry_data.get("response") or {}).get("docs") or [])
     recency = docs[0].get("timestamp") if docs else None
     return {
         "recency": recency, "maintainers": "n/a", "downloads": "n/a",
-        "deprecated": None, "registry_status": "ok",
+        "deprecated": None, "repository_url": None, "registry_status": "ok",
     }
 
 
@@ -3412,6 +3589,10 @@ def health_java(group_artifact):
 #     - No maintainer count, download volume, or deprecation flag;
 #       parsing those out of this API reliably isn't worth the
 #       guesswork involved.
+#     - repository_url comes from the same latest catalog entry's
+#       "projectUrl" field, if NuGet has one on file; many packages
+#       don't set it, in which case this is honestly None rather than
+#       guessed.
 #
 # PARAMETERS
 #     name (str)
@@ -3420,15 +3601,16 @@ def health_java(group_artifact):
 # RETURNS
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": "n/a",
-#         "downloads": "n/a", "deprecated": None, "registry_status":
-#         "ok"|"not_found"|"failed"}.
+#         "downloads": "n/a", "deprecated": None, "repository_url": str
+#         or None, "registry_status": "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - Registration index request fails: registry_status is
 #       "not_found" (confirmed HTTP 404) or "failed" (any other
 #       failure), and recency is None.
 #     - Registration index has an unexpected shape (caught via
-#       IndexError/KeyError/TypeError): recency is None.
+#       IndexError/KeyError/TypeError): recency and repository_url are
+#       both None.
 ################################################################################
 def health_dotnet(name):
     """Latest catalog entry's publish time from NuGet's registration API.
@@ -3442,7 +3624,7 @@ def health_dotnet(name):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": None, "registry_status": registry_status,
         }
     try:
         # NuGet's registration API paginates versions into "pages"; the
@@ -3452,12 +3634,15 @@ def health_dotnet(name):
         version_pages = registry_data.get("items") or []
         latest_page = version_pages[-1]
         catalog_items = latest_page.get("items") or []
-        recency = catalog_items[-1]["catalogEntry"]["published"] if catalog_items else None
+        latest_catalog_entry = catalog_items[-1]["catalogEntry"] if catalog_items else {}
+        recency = latest_catalog_entry.get("published")
+        repository_url = latest_catalog_entry.get("projectUrl")
     except (IndexError, KeyError, TypeError):
         recency = None
+        repository_url = None
     return {
         "recency": recency, "maintainers": "n/a", "downloads": "n/a",
-        "deprecated": None, "registry_status": "ok",
+        "deprecated": None, "repository_url": repository_url, "registry_status": "ok",
     }
 
 
@@ -3487,6 +3672,8 @@ def health_dotnet(name):
 #     - pub.dev exposes no download volume or deprecation flag in this
 #       API, so "downloads" is always "n/a" and "deprecated" is always
 #       None here.
+#     - repository_url comes from the latest version's pubspec, either
+#       its "repository" field or, failing that, "homepage".
 #
 # PARAMETERS
 #     name (str)
@@ -3496,7 +3683,8 @@ def health_dotnet(name):
 #     dict
 #         {"recency": ISO timestamp or None, "maintainers": str or
 #         "n/a", "downloads": "n/a", "deprecated": None,
-#         "registry_status": "ok"|"not_found"|"failed"}.
+#         "repository_url": str or None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
 #
 # FAILURE CASES
 #     - Package metadata request fails: registry_status is
@@ -3515,13 +3703,16 @@ def health_dart(name):
             registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": registry_status,
+            "repository_url": None, "registry_status": registry_status,
         }
+    latest_version_info = registry_data.get("latest") or {}
+    pubspec = latest_version_info.get("pubspec") or {}
     return {
-        "recency": (registry_data.get("latest") or {}).get("published"),
+        "recency": latest_version_info.get("published"),
         "maintainers": registry_data.get("publisher") or "n/a",
         "downloads": "n/a",
         "deprecated": None,
+        "repository_url": pubspec.get("repository") or pubspec.get("homepage"),
         "registry_status": "ok",
     }
 
@@ -3557,8 +3748,9 @@ def health_dart(name):
 # RETURNS
 #     dict
 #         {"recency": None, "maintainers": "n/a", "downloads": "n/a",
-#         "deprecated": None, "registry_status": "unavailable"}.
-#         Always the same value regardless of input.
+#         "deprecated": None, "repository_url": None,
+#         "registry_status": "unavailable"}. Always the same value
+#         regardless of input.
 #
 # FAILURE CASES
 #     - None.
@@ -3571,7 +3763,7 @@ def health_cpp(_name):
     the one live signal available for this ecosystem)."""
     return {
         "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-        "registry_status": "unavailable",
+        "repository_url": None, "registry_status": "unavailable",
     }
 
 
@@ -3821,6 +4013,8 @@ def health_tier(recency, maintainers, downloads, vuln_status, deprecated=None, a
 #     - Resolve its pinned version, if a repo root was given.
 #     - Check OSV.dev for vulnerabilities in that version.
 #     - Check the curated abandoned-package list.
+#     - Check whether the package's GitHub repository (if one could be
+#       resolved) is archived.
 #     - Compute an overall health tier from all of the above.
 #
 # PROCESS OVERVIEW
@@ -3832,15 +4026,26 @@ def health_tier(recency, maintainers, downloads, vuln_status, deprecated=None, a
 #           was given.
 #        c. Check OSV.dev for vulnerabilities in that version.
 #        d. Check the curated abandoned-package list.
-#        e. Compute its overall health tier.
-#        f. Record the combined result under name.
+#        e. If a GitHub owner/repo could be extracted from the
+#           registry data's repository_url, check whether that
+#           repository is archived.
+#        f. Compute its overall health tier.
+#        g. Record the combined result under name.
 #     3. Return the collected results.
 #
 # IMPORTANT DETAILS
 #     - names should already be triaged/limited by the caller; see the
-#       module docstring's note on bounding outbound calls.
+#       module docstring's note on bounding outbound calls. This
+#       matters even more now than before: every name here can trigger
+#       up to one extra GitHub API call, and GitHub's unauthenticated
+#       API is rate-limited to 60 requests/hour.
 #     - If root is None, no version resolution is attempted, and every
 #       OSV check runs unscoped.
+#     - archived is None whenever repository_url isn't a github.com
+#       URL, or the GitHub lookup itself failed; it is never fed into
+#       health_tier(), which stays exactly as it was before this field
+#       existed (patch-for-the-high-score also calls this function and
+#       must keep seeing the same health_tier behavior it always has).
 #
 # PARAMETERS
 #     ecosystem (str)
@@ -3854,9 +4059,9 @@ def health_tier(recency, maintainers, downloads, vuln_status, deprecated=None, a
 # RETURNS
 #     dict
 #         {name: {"pinned_version", "recency", "maintainers",
-#         "downloads", "deprecated", "registry_status",
-#         "vulnerabilities", "abandoned", "health_tier"}} for every
-#         name in names.
+#         "downloads", "deprecated", "repository_url", "archived",
+#         "registry_status", "vulnerabilities", "abandoned",
+#         "health_tier"}} for every name in names.
 #
 # FAILURE CASES
 #     - None expected; every sub-call already handles its own
@@ -3866,7 +4071,8 @@ def run_health(ecosystem, names, root=None):
     """For each name: looks up registry health data, resolves its pinned
     version from root's lockfile (if root is given), checks OSV for
     vulnerabilities in that version, checks the curated abandoned-package
-    list, and computes a health tier. Returns {name: {...}}."""
+    list, checks whether its GitHub repository (if resolvable) is archived,
+    and computes a health tier. Returns {name: {...}}."""
     health_lookup = HEALTH_FN.get(ecosystem)
     results = {}
     for name in names:
@@ -3875,7 +4081,7 @@ def run_health(ecosystem, names, root=None):
         else:
             registry_data = {
                 "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-                "registry_status": "unavailable",
+                "repository_url": None, "registry_status": "unavailable",
             }
 
         if root:
@@ -3884,12 +4090,22 @@ def run_health(ecosystem, names, root=None):
             pinned_version = None
         vulnerability_info = check_osv(ecosystem, name, pinned_version)
         abandoned_entry = abandoned_packages.lookup(ecosystem, name)
+
+        repository_url = registry_data.get("repository_url")
+        github_owner_and_repo = extract_github_owner_and_repo(repository_url)
+        if github_owner_and_repo:
+            archived = check_github_repository_archived(*github_owner_and_repo)
+        else:
+            archived = None
+
         results[name] = {
             "pinned_version": pinned_version,
             "recency": registry_data.get("recency"),
             "maintainers": registry_data.get("maintainers"),
             "downloads": registry_data.get("downloads"),
             "deprecated": registry_data.get("deprecated"),
+            "repository_url": repository_url,
+            "archived": archived,
             "registry_status": registry_data.get("registry_status", "ok"),
             "vulnerabilities": vulnerability_info,
             "abandoned": abandoned_entry,

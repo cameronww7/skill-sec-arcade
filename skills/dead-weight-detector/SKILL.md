@@ -58,18 +58,31 @@ Only for the names triaged in Step 3, this is what keeps network calls bounded:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py health <ecosystem> <repo_path> <name> [<name> ...]
 ```
 
-`<repo_path>` is used to resolve each name's pinned version from the local lockfile, so the vulnerability check is scoped to what's actually installed. Read `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md` for exactly which fields are available per ecosystem and the tier thresholds, don't restate that table, cite it. Report `"n/a"` fields honestly as unavailable for that ecosystem, never imply a number that wasn't returned.
+`<repo_path>` is used to resolve each name's pinned version from the local lockfile. Read `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md` for exactly which fields are available per ecosystem and the tier thresholds, don't restate that table, cite it. Report `"n/a"` fields honestly as unavailable for that ecosystem, never imply a number that wasn't returned.
 
-If `vulnerabilities.version_scoped` is `false`, the listed vulnerability IDs are the package's entire historical advisory list, not confirmation the pinned version is affected. Say this explicitly if any show up unscoped, and don't let them alone justify an At Risk framing in your own writeup (the script already won't compute that as the tier, but the raw IDs still get surfaced, contextualize them correctly).
+**Ignore the `vulnerabilities` field and the `health_tier` field entirely.** This skill does not evaluate CVE exposure, that's `patch-for-the-high-score`'s job; `health_tier` can come back `at_risk` purely because of a vulnerability match, which would make it a misleading input into a report that isn't reporting on vulnerabilities at all. Step 6 below derives its own status label directly from the remaining fields: `recency`, `maintainers`, `downloads`, `deprecated`, `abandoned`, `repository_url`, `archived`, and `registry_status`.
 
-Two more fields ride along in the same output, both of which force the `at_risk` tier on their own:
+- `deprecated`: a maintainer-declared deprecation message (npm's `deprecated` field, or a fully-yanked latest release on PyPI). Quote the message directly rather than paraphrasing it.
+- `abandoned`: a hit against the curated abandoned-package list (`{"reason": ..., "replacement": ...}`). When present, its `replacement` is the answer to feed into Step 7/8 directly instead of judging replacement complexity from scratch.
+- `archived`: `true` if the package's GitHub repository is flagged archived (read-only), `null` if it's hosted somewhere other than GitHub or couldn't be resolved. GitHub-only coverage, see the reference doc for exactly which ecosystems this applies to.
+- `registry_status`: `"not_found"` means the registry returned a 404, a confirmed absence, worth flagging as likely a private/internal package or a typo rather than presenting identically to `"failed"` (a transient network/timeout error, genuinely just unknown for now).
 
-- `deprecated`: a maintainer-declared deprecation message (npm's `deprecated` field, or a fully-yanked latest release on PyPI). Stronger evidence than any inferred staleness, quote the message directly rather than paraphrasing it.
-- `abandoned`: a hit against the curated abandoned-package list (`{"reason": ..., "replacement": ...}`), for well-known dead ends a live signal alone might not catch. When present, its `replacement` is the answer to feed into Step 6/7 directly instead of judging replacement complexity from scratch.
+## Step 6: Derive a status label
 
-Also check `registry_status`: `"not_found"` means the registry returned a 404, a confirmed absence, worth flagging as likely a private/internal package or a typo rather than presenting identically to `"failed"` (a transient network/timeout error, genuinely just unknown for now).
+Apply this decision list to every triaged dependency, top to bottom, first match wins, using only the fields named in Step 5:
 
-## Step 6: Judge replacement complexity
+1. **Abandoned** - `abandoned` is set.
+2. **Deprecated / EOL** - `deprecated` is set.
+3. **Archived** - `archived` is `true`.
+4. **Unsupported** - release over 12 months old, or 0 maintainers found.
+5. **Slowing** - release 3-12 months old, or a single maintainer, or low download volume, but still active.
+6. **Supported** - recent release and (2+ maintainers or high download volume).
+7. **Unknown (Not Found)** - `registry_status` is `"not_found"`.
+8. **Unknown (Check Failed)** - `registry_status` is `"failed"`.
+
+A dependency that was never triaged into the health-check set (moderate/heavy usage, not user-named) gets **Not Checked** in the full inventory table (Step 9), it was never run through this list at all.
+
+## Step 7: Judge replacement complexity
 
 This is the actual value this skill adds over a mechanical script: is what's being used trivial to hand-roll, or genuinely risky to reimplement? Calibration anchors:
 
@@ -78,62 +91,99 @@ This is the actual value this skill adds over a mechanical script: is what's bei
 
 State which bucket the used surface falls into and why, in one or two sentences, don't just assert it.
 
-If Step 5's `abandoned` field is present, skip the from-scratch judgment and name its `replacement` directly instead, that's a maintained, community-vetted answer rather than a guess at hand-rolling complexity.
+If Step 6 landed on **Abandoned**, skip the from-scratch judgment and name its `replacement` directly instead, that's a maintained, community-vetted answer rather than a guess at hand-rolling complexity.
 
-## Step 7: Final verdict
+## Step 8: Final verdict
 
-One of four, always evidence-cited back to Steps 1-6:
+One of four, always evidence-cited back to Steps 1-7:
 
-- **KEEP**: `moderate`/`heavy` usage, or `healthy` health tier regardless of usage tier (a well-maintained, widely-used dependency used lightly is still fine, e.g. a small well-known utility with no real risk in carrying it).
-- **CANDIDATE TO INLINE**: `minimal`/`light` usage tier AND the used surface was judged trivial to hand-roll in Step 6.
-- **KEEP BUT WATCH**: usage tier is fine on its own, but health tier came back `slowing` or `at_risk`. Not urgent, but flag it and recommend planning ahead rather than waiting for a forced migration.
-- **NEEDS HUMAN JUDGMENT**: signals conflict (e.g. trivial-to-inline usage but the health check came back `healthy` and widely relied upon elsewhere too), or health data came back `unknown`. Don't force a verdict the evidence doesn't support, say what's missing and what would resolve it.
+- **KEEP**: `moderate`/`heavy` usage, or Status is **Supported** regardless of usage tier (a well-maintained, widely-used dependency used lightly is still fine, e.g. a small well-known utility with no real risk in carrying it).
+- **CANDIDATE TO INLINE**: `minimal`/`light` usage tier AND the used surface was judged trivial to hand-roll in Step 7.
+- **KEEP BUT WATCH**: usage tier is fine on its own, but Status is **Deprecated/EOL**, **Archived**, **Unsupported**, or **Slowing**. Not urgent, but flag it and recommend planning ahead rather than waiting for a forced migration.
+- **NEEDS HUMAN JUDGMENT**: signals conflict (e.g. trivial-to-inline usage but Status came back **Supported** and widely relied upon elsewhere too), or Status is **Unknown**. Don't force a verdict the evidence doesn't support, say what's missing and what would resolve it.
 
-## Step 8: Write the report
+Also name a concrete next action for every triaged dependency, not just the verdict label, e.g. "replace with `String.prototype.padStart`" or "migrate to `zoneinfo` (stdlib, Python 3.9+)", not just "inline it."
+
+## Step 9: Write the report
 
 ### Voice
 
 - No em dashes.
-- Table-first for the full inventory (Step 2), narrative verdict blocks only for the triaged deep-dive set.
-- Every usage claim traces to a `file:line`-style citation from Step 4. Every health claim traces to a named field from Step 5's output (`recency`, `maintainers`, `downloads`, `vulnerabilities`), not a vague "looks unmaintained."
+- Table-first for the risk overview and full inventory, bulleted (not narrative-paragraph) writeups for the triaged deep-dive set.
+- Every usage claim traces to a `file:line`-style citation from Step 4. Every status claim traces to a named field from Step 5's output (`recency`, `maintainers`, `downloads`, `deprecated`, `abandoned`, `archived`), not a vague "looks unmaintained."
 - State plainly whenever a signal came back `n/a` or `unknown`, don't paper over a gap with a confident-sounding sentence.
+- Every table and list is sorted worst-status-first: Abandoned > Deprecated/EOL > Archived > Unsupported > Slowing > Supported > Unknown (Not Found) > Unknown (Check Failed) > Not Checked, so the reader sees what needs attention first without scanning the whole report. Ties break by usage tier ascending.
 
 ### Format
 
 ```
 # Dead Weight Report: [repo/directory name]
 
-## Full Dependency Inventory
-
-### [ecosystem]
-| Dependency | Files | Call Sites | Usage Tier |
-|---|---|---|---|
-[one row per direct dependency, lowest usage first]
-[repeat per ecosystem present]
-
-## Deep Dive
-
-### [dependency name] ([ecosystem])
-
-**Usage**: [files_importing] files, [call_site_count] call sites, tier [minimal/light/moderate/heavy]
-**What it's used for**: [1-2 sentences from Step 4, cited by file:line]
-**Health**: recency [date or n/a] · maintainers [count or n/a] · downloads [count or n/a] · vulnerabilities [none / IDs, scoped or unscoped] · deprecated [message or none] -> [health tier]
-**Replacement complexity**: [trivial / not worth reinventing / named replacement from the abandoned-package list], [why, 1 sentence]
-
-**Verdict: [KEEP / CANDIDATE TO INLINE / KEEP BUT WATCH / NEEDS HUMAN JUDGMENT]**
-[1-2 sentence justification tying the above together]
-
-[repeat per triaged dependency]
+## Risk Overview
+| Dependency | Ecosystem | Status | Why | Next Action |
+|---|---|---|---|---|
+[one row per dependency whose Status is Abandoned, Deprecated/EOL,
+Archived, or Unsupported, worst first]
+[if none qualify: a single line saying so instead of an empty table]
 
 ## Summary
 
 [one line per verdict category: counts and the standout names, so the
 reader can act without re-reading the whole report]
+
+## Legend
+
+| Status | Meaning |
+|---|---|
+| Abandoned | Hit in the curated abandoned-package list, a maintained replacement is named. |
+| Deprecated / EOL | Maintainer-declared deprecation (npm `deprecated`, or a fully-yanked latest PyPI release). |
+| Archived | The package's GitHub repository is flagged archived (read-only). GitHub-hosted only. |
+| Unsupported | Release over 12 months old, or 0 maintainers found, with no explicit deprecation/abandonment/archive signal. |
+| Slowing | Release 3-12 months old, or a single maintainer, or low download volume, but still active. |
+| Supported | Recent release and (2+ maintainers or high download volume). |
+| Unknown (Not Found) | Registry returned a confirmed 404, likely private/internal or a typo. |
+| Unknown (Check Failed) | Registry lookup failed transiently (network/timeout), genuinely unresolved. |
+| Not Checked | Not in this run's health-check triage set (moderate/heavy usage, not user-named). |
+
+| Usage Tier | Meaning |
+|---|---|
+| minimal / light | Below Step 3's triage threshold, eligible for the deep dive. |
+| moderate / heavy | Above the triage threshold, table-only unless user-named. |
+
+| Verdict | Meaning |
+|---|---|
+| KEEP | Earning its place, by usage or by Status. |
+| CANDIDATE TO INLINE | Low usage and trivial to hand-roll. |
+| KEEP BUT WATCH | Fine on usage, but Status flags a maintenance risk. |
+| NEEDS HUMAN JUDGMENT | Signals conflict, or Status is Unknown. |
+
+## Full Dependency Inventory
+
+### [ecosystem]
+| Dependency | Files | Call Sites | Usage Tier | Status |
+|---|---|---|---|---|
+[one row per direct dependency, Status severity first, usage tier
+ascending as a tiebreak]
+[repeat per ecosystem present]
+
+## Deep Dive
+
+### [dependency name] ([ecosystem])
+- Usage: [files_importing] files, [call_site_count] call sites, tier [minimal/light/moderate/heavy]
+- What it's used for: [1-2 sentences from Step 4, cited by file:line]
+- Status: [status] - [the specific field/message backing it, e.g. the quoted
+  deprecation message, or "recency 2015-03-24 (14mo), 1 maintainer"]
+- Replacement complexity: [trivial / not worth reinventing / named replacement
+  from the abandoned list], [why, 1 sentence]
+- Verdict: [KEEP / CANDIDATE TO INLINE / KEEP BUT WATCH / NEEDS HUMAN JUDGMENT]
+- Next action: [concrete step]
+
+[repeat per triaged dependency, same Status-severity ordering]
 ```
 
 If more than 15 dependencies qualified for the deep dive, note the cap and which ones were left at table-only level, per Step 3.
 
-## Step 9: Offer to save
+## Step 10: Offer to save
 
 After producing the report, follow the save prompt defined in `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`. Frame it as something worth re-running periodically, dependency health drifts, a `KEEP` today can become `KEEP BUT WATCH` in six months without any code change on this side.
 
@@ -141,5 +191,5 @@ After producing the report, follow the save prompt defined in `${CLAUDE_PLUGIN_R
 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py`: does the mechanical work, local usage-site scanning (Step 1) and live registry health lookups (Step 5). Reuses `cartridge_scan.py`'s file-discovery helpers but does not modify that script or its output.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/abandoned_packages.py`: the curated abandoned-package list `dead_weight_scan.py`'s health check consults, used in Steps 5-6.
-- `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md`: which health signal is available per ecosystem and where it comes from, the OSV.dev ecosystem-name mapping, and the exact health-tier thresholds, used in Step 5.
-- `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention, used in Step 9.
+- `${CLAUDE_PLUGIN_ROOT}/references/registry-health-signals.md`: which health signal is available per ecosystem and where it comes from, the OSV.dev ecosystem-name mapping, the GitHub-archived check's per-ecosystem repository URL sources, and the exact health-tier thresholds, used in Step 5.
+- `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention, used in Step 10.

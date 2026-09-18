@@ -168,19 +168,17 @@ The skill runs the local usage scan first, triages candidates, then makes live r
 ## Deep Dive
 
 ### left-pad (npm)
-
-**Usage**: 1 file, 1 call site, tier minimal
-**What it's used for**: src/format.js:3, pads a single numeric ID to
-3 digits before display.
-**Health**: recency 2015-03-24 (over 12mo) · maintainers 1 · downloads
-1,240,000/mo · vulnerabilities none -> slowing
-**Replacement complexity**: trivial, `String(n).padStart(3, '0')` is
-a one-line stdlib replacement for the entire used surface.
-
-**Verdict: CANDIDATE TO INLINE**
-Single call site, and what it does is now a JavaScript stdlib method.
-No reason to carry an external dependency, network install, and
-supply-chain surface for this.
+- Usage: 1 file, 1 call site, tier minimal
+- What it's used for: src/format.js:3, pads a single numeric ID to
+  3 digits before display.
+- Status: Slowing - recency 2015-03-24 (over 12mo), 1 maintainer,
+  1,240,000 downloads/mo
+- Replacement complexity: trivial, `String(n).padStart(3, '0')` is a
+  one-line stdlib replacement for the entire used surface.
+- Verdict: CANDIDATE TO INLINE
+- Next action: replace with `String.prototype.padStart`, no reason to
+  carry an external dependency, network install, and supply-chain
+  surface for this.
 ```
 
 ## Limitations
@@ -189,7 +187,8 @@ supply-chain surface for this.
 - Ruby, PHP, and C/C++ usage detection is explicitly weaker (`"usage_signal": "weak"`). Dynamic dispatch and PSR-4 autoloading defeat static symbol matching for Ruby/PHP; C/C++'s `#include` doesn't bind a symbol at all, and mapping a header path to a package name (e.g. `#include <fmt/format.h>` -> `fmt`) is an author convention, not a registry-enforced rule.
 - Health-signal coverage varies a lot by ecosystem, see `references/registry-health-signals.md`. Go, Java, and .NET have no clean maintainer-count or download API, those fields report `n/a` honestly rather than a guess.
 - PyPI download counts come from `pypistats.org`, a third-party service, not PyPI itself. If it's down or rate-limited, that one field degrades to unavailable, the rest of the health check still runs.
-- The vulnerability check only forces an At Risk tier when the pinned version could actually be resolved from a lockfile. Without a lockfile, OSV results are shown for awareness but don't drive the tier.
+- Archived-repository detection only works for GitHub-hosted packages, and only when the registry's own metadata names a repository URL at all. GitLab, Bitbucket, self-hosted, or unlisted repositories report Unknown rather than a guess, see `references/registry-health-signals.md`'s GitHub-archived section for exactly which ecosystems this covers.
+- This skill does not check for known vulnerabilities (CVEs). It deliberately doesn't report on that, use `patch-for-the-high-score` for a finding that already needs a patch-vs-upgrade decision.
 - Not a substitute for a real SCA tool for CVE tracking over time. This skill's OSV check is a point-in-time read during the deep dive, not continuous monitoring.
 
 ## Next cabinet

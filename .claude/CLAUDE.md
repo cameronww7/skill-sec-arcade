@@ -1,17 +1,12 @@
+# Repo Rules
+
+- All `SKILL.md` references to shared resources must use `${CLAUDE_PLUGIN_ROOT}/...`, bare form only, not a relative path.
+- New skills start from `templates/SKILL.md.template`.
+- Check `ARCHITECTURE.md`'s skill-to-resource map before editing anything under `scripts/` or `references/`; other skills may depend on the file you're changing.
+- `README.md` files under `skills/*/` are human-facing only, Claude never reads them. Anything Claude needs to follow belongs in that skill's `SKILL.md`.
+- See `ARCHITECTURE.md` for the full repo layout, the skill-to-resource map, and why this repo's distribution model is plugin-install-only.
+
 # Code Style Guide
-
-## Project Overview
-
-This repository is a Claude Code plugin named `sec-arcade`: an arcade-themed collection of skills for AppSec and security engineering. It is simultaneously the plugin itself and its own marketplace — `.claude-plugin/plugin.json` defines the plugin, and `.claude-plugin/marketplace.json` lists it with a self-referential `source: "./"`.
-
-Top-level layout:
-
-- `skills/` — one directory per skill, each containing exactly `SKILL.md` (the skill's instructions, with YAML frontmatter defining `name` and a trigger-phrase-laden `description`) and `README.md` (human-facing docs). Skills hold no code or reference docs of their own; everything shared lives centrally at the repo root.
-- `scripts/` — Python helpers shared across skills: `cartridge_scan.py`, `dead_weight_scan.py`, `abandoned_packages.py`. A skill invokes one of these via `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py` in its `SKILL.md` instructions. Currently three skills do this: `cartridge-scanner` (→ `cartridge_scan.py`), `dead-weight-detector` (→ `dead_weight_scan.py`), and `patch-for-the-high-score` (→ both, as part of its broader remediation workflow). These scripts are deliberately stdlib-only (see the Dependencies section below) so they can run safely against untrusted target repos without an install step.
-- `references/` — shared markdown reference docs (OWASP mappings, attack-vector data, remediation playbooks, registry health-signal thresholds, etc.) consumed by multiple skills rather than duplicated per-skill. Seven of the nine skills use at least one of these; the two that don't (`player-two-verdict`, `tilt-check`) are self-contained investigation/triage skills that work directly off a pasted finding.
-- `templates/` — `SKILL.md.template`, the scaffold new skills are authored from.
-
-When adding a new skill, follow the existing `skills/*/SKILL.md` pattern (frontmatter + themed heading + "Why this skill exists" + numbered "Step N" sections) rather than inventing a new shape.
 
 The rest of this document is a code style guide that applies to all code written in this repository, including the scripts under `scripts/`. It defines the standing convention for how code here is written and maintained.
 

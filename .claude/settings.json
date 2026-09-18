@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Read(scripts/**)",
+      "Read(references/**)",
+      "Read(skills/**)",
+      "Read(templates/**)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)"
+    ]
+  }
+}
