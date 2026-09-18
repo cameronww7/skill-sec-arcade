@@ -120,44 +120,54 @@ ABANDONED = {
 
 # ===== MAIN =====
 
-# ------------------------------------------------------------------------
-# lookup
+################################################################################
+# FUNCTION: lookup
 #
-# WHAT IT DOES:   Checks whether a given package name, in a given
-#                 ecosystem, is listed in the curated ABANDONED table
-#                 above, and if so returns why it's abandoned and what to
-#                 use instead.
-# WHY IT EXISTS:  dead_weight_scan.py's live registry/OSV checks can miss
-#                 packages that still look healthy by those numbers alone.
-#                 This gives the scanner one more, human-curated signal to
-#                 fall back on.
+# PURPOSE
+#     Checks whether a given package, in a given ecosystem, is a known
+#     abandoned/deprecated package per the hand-curated ABANDONED table
+#     above. dead_weight_scan.py's live registry and OSV checks can miss
+#     packages that still look healthy by those signals alone; this gives
+#     the scanner one more, human-curated signal to fall back on.
 #
-# INPUTS:
-#   ecosystem (str) - lowercase ecosystem key, e.g. "python", "go". If it
-#                      isn't a key in ABANDONED, the function returns None
-#                      immediately rather than raising KeyError.
-#   name (str) - the package name as declared in the project's manifest.
-#                Matched exactly first, then against name.lower(), so
-#                callers don't need to normalize case themselves.
+# RESPONSIBILITIES
+#     - Look up the ecosystem's package table in ABANDONED.
+#     - Match the package name against that table, exact case first and
+#       then lowercased, so callers don't need to normalize case
+#       themselves.
+#     - Return the matching entry, or None if there is no match.
 #
-# RETURNS:
-#   (dict or None) - {"reason": str, "replacement": str} if name is
-#   listed under ecosystem; None if the ecosystem is unknown or the
-#   package isn't in the list. None means "not flagged," not "confirmed
-#   healthy," most packages simply aren't in this hand-curated table.
+# PROCESS OVERVIEW
+#     1. Look up the ecosystem's package table in ABANDONED.
+#     2. If the ecosystem has no table, return None immediately.
+#     3. Look for an exact-case match of the package name in that table.
+#     4. If no exact match, look for a lowercased match instead.
+#     5. Return whichever entry was found, or None if neither matched.
 #
-# RAISES/ERRORS:  None. Every miss (unknown ecosystem, unlisted package)
-#                 is reported via a None return, never an exception.
-# SIDE EFFECTS:   None.
-# CALLED BY:      run_health() in dead_weight_scan.py.
-# CALLS:          dict.get() only.
+# IMPORTANT DETAILS
+#     - A None return means "not flagged in this table," not "confirmed
+#       healthy." Most real packages simply aren't in this hand-curated
+#       table and are expected to return None.
+#     - No filesystem or network access of any kind; this is a pure,
+#       stateless lookup with no side effects.
 #
-# EXAMPLE:
-#   lookup("python", "PyCrypto")
-#   -> {"reason": "Unmaintained since 2013; has known unpatched
-#       vulnerabilities.", "replacement": "pycryptodome (drop-in
-#       API-compatible fork)"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     ecosystem (str)
+#         Lowercase ecosystem key, e.g. "python" or "go", matching a key
+#         in ABANDONED. An ecosystem not present in ABANDONED is not an
+#         error; it simply produces a None return.
+#     name (str)
+#         The package name as declared in the project's manifest.
+#
+# RETURNS
+#     dict or None
+#         {"reason": str, "replacement": str} if the package is listed
+#         under the given ecosystem; None otherwise.
+#
+# FAILURE CASES
+#     - Unknown ecosystem: returns None.
+#     - Package not listed under a known ecosystem: returns None.
+################################################################################
 def lookup(ecosystem, name):
     """Returns the abandonment entry ({"reason", "replacement"}) for name
     in ecosystem, checking both the name as given and its lowercased
@@ -165,4 +175,9 @@ def lookup(ecosystem, name):
     ecosystem_entries = ABANDONED.get(ecosystem)
     if not ecosystem_entries:
         return None
-    return ecosystem_entries.get(name) or ecosystem_entries.get(name.lower())
+
+    exact_case_match = ecosystem_entries.get(name)
+    if exact_case_match:
+        return exact_case_match
+
+    return ecosystem_entries.get(name.lower())

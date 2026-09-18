@@ -161,42 +161,56 @@ WEAK_ECOSYSTEMS = {"ruby", "php", "cpp"}
 # ===== DEPENDENCY NAME EXTRACTION =====
 # --- dependency name extraction (new logic, not in cartridge_scan.py) ------
 
-# ------------------------------------------------------------------------
-# list_javascript_deps
+################################################################################
+# FUNCTION: list_javascript_deps
 #
-# WHAT IT DOES:   Lists every dependency declared in package.json.
-# WHY IT EXISTS:  usage mode needs the set of direct dependencies to
-#                 search source files for, per ecosystem; this is the
-#                 JavaScript-specific lister.
+# PURPOSE
+#     Lists every dependency declared in package.json, so usage mode
+#     knows what JavaScript dependency names to search source files for.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find the repo's package.json.
+#     - Collect every dependency name across its dependencies,
+#       devDependencies, peerDependencies, and optionalDependencies
+#       sections.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (dependency_name, manifest_path) pairs,
-#   covering dependencies, devDependencies, peerDependencies, and
-#   optionalDependencies. Empty list if no package.json exists.
+# PROCESS OVERVIEW
+#     1. Find package.json files under root.
+#     2. Parse the first one found as JSON.
+#     3. Collect every name from its dependencies, devDependencies,
+#        peerDependencies, and optionalDependencies sections, paired
+#        with the manifest path.
+#     4. Return the collected pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_json().
+# IMPORTANT DETAILS
+#     - Only the first package.json is read, same reasoning as
+#       scan_javascript() in cartridge_scan.py: a monorepo can have
+#       several, and summing unrelated workspaces together would be
+#       misleading rather than helpful.
 #
-# EXAMPLE:
-#   list_javascript_deps("/repo")
-#   -> [("react", "/repo/package.json"), ("lodash", "/repo/package.json")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (dependency_name, manifest_path) pairs. Empty list if no
+#         package.json exists.
+#
+# FAILURE CASES
+#     - No package.json found: returns an empty list.
+################################################################################
 def list_javascript_deps(root):
     """Returns (name, manifest_path) pairs for every dependency listed in
     package.json (dependencies, devDependencies, peerDependencies,
     optionalDependencies). Only reads the first package.json found."""
     dependencies = []
     for manifest in find_files(root, names={"package.json"}):
-        data = read_json(manifest)
-        if not isinstance(data, dict):
+        package_json_contents = read_json(manifest)
+        if not isinstance(package_json_contents, dict):
             continue
         for key in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
-            for name in (data.get(key) or {}):
+            for name in (package_json_contents.get(key) or {}):
                 dependencies.append((name, manifest))
         # Only the first package.json is read, same reasoning as
         # scan_javascript() in cartridge_scan.py: a monorepo can have
@@ -206,36 +220,55 @@ def list_javascript_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_python_deps
+################################################################################
+# FUNCTION: list_python_deps
 #
-# WHAT IT DOES:   Lists every dependency declared across all of Python's
-#                 common manifest formats.
-# WHY IT EXISTS:  Python dependencies can be declared in requirements.txt,
-#                 pyproject.toml (two different conventions), Pipfile,
-#                 setup.py, or setup.cfg; usage mode needs the union of
-#                 all of them to know what to search for.
+# PURPOSE
+#     Lists every dependency declared across all of Python's common
+#     manifest formats, so usage mode has the union of all of them to
+#     search source files for.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find every Python manifest format: requirements*.txt,
+#       pyproject.toml (PEP 621 and Poetry), Pipfile, setup.py, and
+#       setup.cfg.
+#     - Extract each manifest's declared dependency names, with version
+#       specifiers, extras, and environment markers stripped off.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (package_name, manifest_path) pairs, one
-#   per declared dependency across every manifest format found. Version
-#   specifiers, extras, and environment markers are stripped from the
-#   name. Empty list if no Python manifest exists.
+# PROCESS OVERVIEW
+#     1. For each requirements*.txt file, extract the package name from
+#        each non-comment, non-option line.
+#     2. For each pyproject.toml, extract names from its PEP 621
+#        dependencies array and its [tool.poetry.dependencies] table.
+#     3. For each Pipfile, extract names from its [packages] and
+#        [dev-packages] sections.
+#     4. For each setup.py, extract names via
+#        install_requires_from_setup_py().
+#     5. For each setup.cfg, extract names via
+#        install_requires_from_setup_cfg().
+#     6. Return all collected (name, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text(), install_requires_from_setup_py(),
-#                 install_requires_from_setup_cfg().
+# IMPORTANT DETAILS
+#     - A requirement spec like "requests==2.31.0" is cut at the first
+#       version specifier, extras bracket, environment marker, or
+#       whitespace to get the bare name "requests".
+#     - Poetry's Python version constraint (the "python" key in
+#       [tool.poetry.dependencies]) is excluded, since it isn't a real
+#       dependency.
 #
-# EXAMPLE:
-#   # requirements.txt contains: requests==2.31.0
-#   list_python_deps("/repo")
-#   -> [("requests", "/repo/requirements.txt"), ...]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (package_name, manifest_path) pairs, one per declared
+#         dependency across every manifest format found. Empty list if
+#         no Python manifest exists.
+#
+# FAILURE CASES
+#     - No Python manifest found: returns an empty list.
+################################################################################
 def list_python_deps(root):
     """Returns (name, manifest_path) pairs from requirements*.txt,
     pyproject.toml (both PEP 621 and Poetry dependency tables), and
@@ -296,29 +329,42 @@ def list_python_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_go_deps
+################################################################################
+# FUNCTION: list_go_deps
 #
-# WHAT IT DOES:   Lists every module declared in go.mod's require
-#                 directives.
-# WHY IT EXISTS:  Go-specific dependency lister for usage mode.
+# PURPOSE
+#     Lists every module declared in go.mod's require directives, the
+#     Go-specific dependency lister for usage mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find go.mod files.
+#     - Extract every module path from both the single-line and
+#       parenthesized-block require forms.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (module_path, manifest_path) pairs, from
-#   both the single-line `require path vX.Y.Z` form and the parenthesized
-#   `require (...)` block form. Empty list if no go.mod exists.
+# PROCESS OVERVIEW
+#     1. Find go.mod files under root.
+#     2. For each one, track whether the current line is inside a
+#        parenthesized `require ( ... )` block.
+#     3. Inside that block, extract the module path from each line.
+#     4. Outside that block, extract the module path from any
+#        single-line `require path vX.Y.Z` statement.
+#     5. Return all collected (module_path, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   list_go_deps("/repo") -> [("github.com/pkg/errors", "/repo/go.mod")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (module_path, manifest_path) pairs. Empty list if no go.mod
+#         exists.
+#
+# FAILURE CASES
+#     - No go.mod found: returns an empty list.
+################################################################################
 def list_go_deps(root):
     """Returns (module_path, manifest_path) pairs from go.mod's require
     directives, both the single-line and parenthesized-block forms."""
@@ -345,38 +391,54 @@ def list_go_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_java_deps
+################################################################################
+# FUNCTION: list_java_deps
 #
-# WHAT IT DOES:   Lists every dependency declared in pom.xml, build.gradle
-#                 (or .kts), or ivy.xml, keyed by Maven groupId.
-# WHY IT EXISTS:  Java import statements conventionally start with the
-#                 dependency's groupId (e.g. groupId "org.springframework"
-#                 -> imports "org.springframework.*"), not its artifactId,
-#                 so usage matching for Java needs the groupId specifically,
-#                 not just a package name string the way other ecosystems
-#                 do.
+# PURPOSE
+#     Lists every dependency declared in pom.xml, build.gradle (or
+#     .kts), or ivy.xml, keyed by Maven groupId. Java import statements
+#     conventionally start with the dependency's groupId (e.g. groupId
+#     "org.springframework" -> imports "org.springframework.*"), not its
+#     artifactId, so usage matching for Java needs the groupId
+#     specifically, not just a package name string the way other
+#     ecosystems do.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find pom.xml, build.gradle/build.gradle.kts, and ivy.xml files.
+#     - Extract each dependency's groupId and artifactId (or Ivy's
+#       equivalent org/name attributes).
 #
-# RETURNS:
-#   (list[tuple[str, str, str]]) - (matching_prefix, manifest_path,
-#   display_name) triples. matching_prefix is the groupId, used by
-#   module_matches() to test whether an import belongs to this
-#   dependency. display_name is "groupId:artifactId", shown in the report
-#   instead of the bare groupId.
+# PROCESS OVERVIEW
+#     1. For each pom.xml, extract every <groupId>/<artifactId> pair
+#        from its <dependency> tags.
+#     2. For each build.gradle/build.gradle.kts, extract every
+#        "group:artifact:version" dependency string.
+#     3. For each ivy.xml, extract every org/name attribute pair from
+#        its <dependency> tags, searching for each attribute
+#        independently since Ivy doesn't guarantee attribute order.
+#     4. Return all collected (matching_prefix, manifest_path,
+#        display_name) triples.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - matching_prefix is always the groupId (or Ivy's org), since
+#       that's what a Java import statement starts with; display_name
+#       is "groupId:artifactId" so the report shows the full dependency
+#       identity, not just the groupId used for matching.
 #
-# EXAMPLE:
-#   list_java_deps("/repo")
-#   -> [("org.springframework", "/repo/pom.xml",
-#        "org.springframework:spring-core")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str, str]]
+#         (matching_prefix, manifest_path, display_name) triples.
+#         matching_prefix is the groupId, used by module_matches() to
+#         test whether an import belongs to this dependency.
+#
+# FAILURE CASES
+#     - No pom.xml, build.gradle/build.gradle.kts, or ivy.xml found:
+#       returns an empty list.
+################################################################################
 def list_java_deps(root):
     """Returns (matching_prefix, manifest, display_name) triples.
 
@@ -413,27 +475,37 @@ def list_java_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_ruby_deps
+################################################################################
+# FUNCTION: list_ruby_deps
 #
-# WHAT IT DOES:   Lists every gem declared in the Gemfile.
-# WHY IT EXISTS:  Ruby-specific dependency lister for usage mode.
+# PURPOSE
+#     Lists every gem declared in the Gemfile, the Ruby-specific
+#     dependency lister for usage mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find Gemfile files.
+#     - Extract every `gem "..."` declaration's gem name.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (gem_name, manifest_path) pairs. Empty list
-#   if no Gemfile exists.
+# PROCESS OVERVIEW
+#     1. Find Gemfile files under root.
+#     2. For each one, extract the gem name from every `gem "..."` line.
+#     3. Return all collected (gem_name, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   list_ruby_deps("/repo") -> [("rails", "/repo/Gemfile")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (gem_name, manifest_path) pairs. Empty list if no Gemfile
+#         exists.
+#
+# FAILURE CASES
+#     - No Gemfile found: returns an empty list.
+################################################################################
 def list_ruby_deps(root):
     """Returns (gem_name, manifest_path) pairs from `gem "..."` lines in
     the Gemfile."""
@@ -444,68 +516,94 @@ def list_ruby_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_php_deps
+################################################################################
+# FUNCTION: list_php_deps
 #
-# WHAT IT DOES:   Lists every package declared in composer.json's require
-#                 sections.
-# WHY IT EXISTS:  PHP-specific dependency lister for usage mode.
+# PURPOSE
+#     Lists every package declared in composer.json's require sections,
+#     the PHP-specific dependency lister for usage mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find composer.json files.
+#     - Extract every real package name from the require and
+#       require-dev sections.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - ("vendor/package", manifest_path) pairs from
-#   require and require-dev, skipping the "php" pseudo-package (a required
-#   PHP version, not a real dependency) and any entry without a "/" (PHP
-#   extension requirements like "ext-curl" aren't installable packages).
+# PROCESS OVERVIEW
+#     1. Find composer.json files under root.
+#     2. Parse each one as JSON.
+#     3. Collect every name from its require and require-dev sections,
+#        excluding the "php" pseudo-package and any name without a "/".
+#     4. Return all collected (name, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_json().
+# IMPORTANT DETAILS
+#     - "php" itself can appear as a pseudo-dependency (a required PHP
+#       version), not a real package, so it's excluded.
+#     - An entry without a "/" is a PHP extension requirement (e.g.
+#       "ext-curl"), not an installable Composer package, so it's
+#       excluded too.
 #
-# EXAMPLE:
-#   list_php_deps("/repo") -> [("monolog/monolog", "/repo/composer.json")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         ("vendor/package", manifest_path) pairs. Empty list if no
+#         composer.json exists.
+#
+# FAILURE CASES
+#     - No composer.json found: returns an empty list.
+################################################################################
 def list_php_deps(root):
     """Returns ("vendor/package", manifest_path) pairs from composer.json's
     require and require-dev sections, skipping the "php" pseudo-package."""
     dependencies = []
     for composer_json_file in find_files(root, names={"composer.json"}):
-        data = read_json(composer_json_file)
-        if not isinstance(data, dict):
+        composer_json_contents = read_json(composer_json_file)
+        if not isinstance(composer_json_contents, dict):
             continue
         for key in ("require", "require-dev"):
-            for name in (data.get(key) or {}):
+            for name in (composer_json_contents.get(key) or {}):
                 if name != "php" and "/" in name:
                     dependencies.append((name, composer_json_file))
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_rust_deps
+################################################################################
+# FUNCTION: list_rust_deps
 #
-# WHAT IT DOES:   Lists every crate declared in Cargo.toml's dependency
-#                 tables.
-# WHY IT EXISTS:  Rust-specific dependency lister for usage mode.
+# PURPOSE
+#     Lists every crate declared in Cargo.toml's dependency tables, the
+#     Rust-specific dependency lister for usage mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find Cargo.toml files.
+#     - Extract every crate name from the dependencies,
+#       dev-dependencies, and build-dependencies tables.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (crate_name, manifest_path) pairs from
-#   [dependencies], [dev-dependencies], and [build-dependencies]. Empty
-#   list if no Cargo.toml exists.
+# PROCESS OVERVIEW
+#     1. Find Cargo.toml files under root.
+#     2. For each one, track whether the current line is inside a
+#        dependencies/dev-dependencies/build-dependencies table.
+#     3. Inside one of those tables, extract the crate name from each
+#        `name = ...` line.
+#     4. Return all collected (crate_name, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   list_rust_deps("/repo") -> [("serde", "/repo/Cargo.toml")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (crate_name, manifest_path) pairs. Empty list if no
+#         Cargo.toml exists.
+#
+# FAILURE CASES
+#     - No Cargo.toml found: returns an empty list.
+################################################################################
 def list_rust_deps(root):
     """Returns (crate_name, manifest_path) pairs from the
     [dependencies]/[dev-dependencies]/[build-dependencies] tables in
@@ -526,28 +624,43 @@ def list_rust_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_dotnet_deps
+################################################################################
+# FUNCTION: list_dotnet_deps
 #
-# WHAT IT DOES:   Lists every package declared via <PackageReference> in
-#                 .csproj files, or `nuget` lines in paket.dependencies.
-# WHY IT EXISTS:  .NET-specific dependency lister for usage mode, covering
-#                 both the built-in NuGet CLI and the Paket tool.
+# PURPOSE
+#     Lists every package declared via <PackageReference> in .csproj
+#     files, or `nuget` lines in paket.dependencies, the .NET-specific
+#     dependency lister for usage mode, covering both the built-in
+#     NuGet CLI and the Paket tool.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find .csproj and paket.dependencies files.
+#     - Extract every package ID from <PackageReference> tags and
+#       `nuget` lines.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (package_id, manifest_path) pairs.
+# PROCESS OVERVIEW
+#     1. Find .csproj files under root and extract each
+#        <PackageReference Include="..."> tag's package ID.
+#     2. Find paket.dependencies files under root and extract each
+#        `nuget PackageName ...` line's package ID.
+#     3. Return all collected (package_id, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   list_dotnet_deps("/repo") -> [("Newtonsoft.Json", "/repo/App.csproj")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (package_id, manifest_path) pairs. Empty list if no .csproj
+#         or paket.dependencies file exists.
+#
+# FAILURE CASES
+#     - No .csproj and no paket.dependencies found: returns an empty
+#       list.
+################################################################################
 def list_dotnet_deps(root):
     """Returns (package_id, manifest_path) pairs from <PackageReference>
     tags across every .csproj file, plus `nuget PackageName ...` lines in
@@ -562,27 +675,46 @@ def list_dotnet_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_dart_deps
+################################################################################
+# FUNCTION: list_dart_deps
 #
-# WHAT IT DOES:   Lists every package in pubspec.yaml's top-level
-#                 dependencies block.
-# WHY IT EXISTS:  Dart/Flutter-specific dependency lister for usage mode.
+# PURPOSE
+#     Lists every package in pubspec.yaml's top-level dependencies
+#     block, the Dart/Flutter-specific dependency lister for usage
+#     mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find pubspec.yaml files.
+#     - Extract every package name from the top-level dependencies:
+#       block only. dev_dependencies is intentionally not included:
+#       cartridge_scan.py's scan_dart() counts both for its inventory
+#       total, but usage scanning here only needs the dependencies a
+#       repo actually ships with.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (package_name, manifest_path) pairs.
+# PROCESS OVERVIEW
+#     1. Find pubspec.yaml files under root.
+#     2. For each one, track whether the current line is inside the
+#        top-level dependencies: block.
+#     3. Inside that block, extract the package name from each
+#        2-space-indented "name:" line.
+#     4. Return all collected (package_name, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - A line with no leading whitespace means the next top-level YAML
+#       key has been reached, i.e. the dependencies: block has ended.
 #
-# EXAMPLE:
-#   list_dart_deps("/repo") -> [("http", "/repo/pubspec.yaml")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (package_name, manifest_path) pairs. Empty list if no
+#         pubspec.yaml exists.
+#
+# FAILURE CASES
+#     - No pubspec.yaml found: returns an empty list.
+################################################################################
 def list_dart_deps(root):
     """Returns (package_name, manifest_path) pairs from the top-level
     `dependencies:` block in pubspec.yaml."""
@@ -604,33 +736,54 @@ def list_dart_deps(root):
     return dependencies
 
 
-# ------------------------------------------------------------------------
-# list_cpp_deps
+################################################################################
+# FUNCTION: list_cpp_deps
 #
-# WHAT IT DOES:   Lists every direct dependency declared via Conan
-#                 (conanfile.txt/conanfile.py) or vcpkg (vcpkg.json).
-# WHY IT EXISTS:  C/C++-specific dependency lister for usage mode.
-#                 Deliberately limited to real, named, direct-dependency
-#                 manifests, unlike cartridge_scan.py's scan_cpp() this
-#                 does not include conan.lock's transitive graph or the
-#                 CMakeLists.txt/.gitmodules structural signals, usage
-#                 scanning only makes sense for a package you can actually
-#                 name and search imports for.
+# PURPOSE
+#     Lists every direct dependency declared via Conan
+#     (conanfile.txt/conanfile.py) or vcpkg (vcpkg.json), the
+#     C/C++-specific dependency lister for usage mode. Deliberately
+#     limited to real, named, direct-dependency manifests: usage/health
+#     scanning only makes sense for a package you can actually name and
+#     search imports for.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find conanfile.txt, conanfile.py, and vcpkg.json files.
+#     - Extract every direct dependency's name from each format.
 #
-# RETURNS:
-#   (list[tuple[str, str]]) - (package_name, manifest_path) pairs.
+# PROCESS OVERVIEW
+#     1. For each conanfile.txt, track whether the current line is
+#        inside a requires/build_requires/tool_requires section, and
+#        extract the package name (the part before the first "/") from
+#        each non-comment line inside it.
+#     2. For each conanfile.py, extract the package name from every
+#        self.requires()/self.build_requires()/self.tool_requires()
+#        call.
+#     3. For each vcpkg.json, extract every entry in its "dependencies"
+#        array, whether that entry is a bare string or a
+#        {"name": ...} dict.
+#     4. Return all collected (package_name, manifest_path) pairs.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage() via the LIST_DEPS dispatch table.
-# CALLS:          find_files(), read_text(), read_json().
+# IMPORTANT DETAILS
+#     - Unlike cartridge_scan.py's scan_cpp(), this does not include
+#       conan.lock's transitive dependency graph, or the
+#       CMakeLists.txt/.gitmodules structural signals scan_cpp()
+#       reports separately; both of those describe dependencies that
+#       usage scanning cannot meaningfully search imports for.
 #
-# EXAMPLE:
-#   list_cpp_deps("/repo") -> [("fmt", "/repo/conanfile.txt")]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[tuple[str, str]]
+#         (package_name, manifest_path) pairs. Empty list if no Conan
+#         or vcpkg manifest exists.
+#
+# FAILURE CASES
+#     - No conanfile.txt, conanfile.py, or vcpkg.json found: returns an
+#       empty list.
+################################################################################
 def list_cpp_deps(root):
     """Returns (package_name, manifest_path) pairs from Conan's
     conanfile.txt [requires] section, conanfile.py self.requires() calls,
@@ -657,13 +810,13 @@ def list_cpp_deps(root):
         for match in re.finditer(r"self\.(?:requires|build_requires|tool_requires)\(\s*['\"]([^/'\"]+)/", text):
             dependencies.append((match.group(1), conanfile_py))
     for vcpkg_json_file in find_files(root, names={"vcpkg.json"}):
-        data = read_json(vcpkg_json_file)
-        if isinstance(data, dict):
-            for dep in (data.get("dependencies") or []):
-                if isinstance(dep, str):
-                    dependencies.append((dep, vcpkg_json_file))
-                elif isinstance(dep, dict) and dep.get("name"):
-                    dependencies.append((dep["name"], vcpkg_json_file))
+        vcpkg_json_contents = read_json(vcpkg_json_file)
+        if isinstance(vcpkg_json_contents, dict):
+            for vcpkg_dependency_entry in (vcpkg_json_contents.get("dependencies") or []):
+                if isinstance(vcpkg_dependency_entry, str):
+                    dependencies.append((vcpkg_dependency_entry, vcpkg_json_file))
+                elif isinstance(vcpkg_dependency_entry, dict) and vcpkg_dependency_entry.get("name"):
+                    dependencies.append((vcpkg_dependency_entry["name"], vcpkg_json_file))
     return dependencies
 
 
@@ -690,42 +843,57 @@ LIST_DEPS = {
 # (or, for java, the matching prefix); bound_names is the list of
 # identifiers a call-site sweep should look for elsewhere in the file.
 
-# ------------------------------------------------------------------------
-# extract_js
+################################################################################
+# FUNCTION: extract_js
 #
-# WHAT IT DOES:   Recognizes an ES `import` or CommonJS `require()`
-#                 statement on a single source line and extracts what
-#                 module it imports and what local name(s) it binds.
-# WHY IT EXISTS:  JavaScript has several different import syntaxes (ES
-#                 default/namespace/named imports, CommonJS destructured
-#                 or plain require, side-effect-only imports); usage
-#                 scanning needs to recognize all of them to find where a
-#                 dependency is actually used, not just declared.
+# PURPOSE
+#     Recognizes an ES `import` or CommonJS `require()` statement on a
+#     single source line and extracts what module it imports and what
+#     local name(s) it binds. JavaScript has several different import
+#     syntaxes (ES default/namespace/named imports, CommonJS
+#     destructured or plain require, side-effect-only imports); usage
+#     scanning needs to recognize all of them to find where a
+#     dependency is actually used, not just declared.
 #
-# INPUTS:
-#   line (str) - one line of JavaScript/TypeScript source.
+# RESPONSIBILITIES
+#     - Try each recognized import form, in a fixed order, against the
+#       line.
+#     - For whichever form matches, extract the imported module path
+#       and the local name(s) it binds.
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (module_path, bound_names) if the
-#   line matches a recognized import form, where bound_names are the
-#   local identifiers this import creates (empty list for a side-effect-
-#   only import, which has nothing to search for downstream). None if the
-#   line doesn't match any recognized import form.
+# PROCESS OVERVIEW
+#     1. Try to match a default import (`import Foo from "mod"`).
+#     2. Try to match a namespace import (`import * as Foo from
+#        "mod"`).
+#     3. Try to match named imports (`import { a, b as c } from
+#        "mod"`), resolving each name's "as" alias if present.
+#     4. Try to match a CommonJS destructured require (`const { a, b:
+#        c } = require("mod")`).
+#     5. Try to match a CommonJS plain require (`const foo =
+#        require("mod")`).
+#     6. Try to match a side-effect-only import or require (`import
+#        "polyfill";` or `require("polyfill")`).
+#     7. Return None if none of the above matched.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - A side-effect-only import binds no local name, so its
+#       bound_names list is empty; it still counts as a
+#       files_importing hit downstream, just with nothing to search
+#       for as a call site.
 #
-# EXAMPLE:
-#   extract_js('import axios from "axios";')
-#   -> ("axios", ["axios"])
-#   extract_js('const { useState } = require("react");')
-#   -> ("react", ["useState"])
-#   extract_js('import "polyfill";')
-#   -> ("polyfill", [])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of JavaScript/TypeScript source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (module_path, bound_names) if the line matches a recognized
+#         import form. None if the line doesn't match any recognized
+#         import form.
+#
+# FAILURE CASES
+#     - Line doesn't match any recognized import form: returns None.
+################################################################################
 def extract_js(line):
     """Matches ES `import` (default/namespace/named) and CommonJS
     `require()` forms, in that order. Returns (module_path, bound_names)."""
@@ -752,7 +920,11 @@ def extract_js(line):
     # `const { a, b: c } = require("mod")` (CommonJS destructure).
     match = re.match(r"^\s*(?:const|let|var)\s+\{([^}]+)\}\s*=\s*require\(['\"]([^'\"]+)['\"]\)", line)
     if match:
-        bound_names = [p.strip().split(":")[-1].strip() for p in match.group(1).split(",") if p.strip()]
+        bound_names = []
+        for part in match.group(1).split(","):
+            stripped_part = part.strip()
+            if stripped_part:
+                bound_names.append(stripped_part.split(":")[-1].strip())
         return match.group(2), bound_names
     # `const foo = require("mod")` (CommonJS plain require).
     match = re.match(r"^\s*(?:const|let|var)\s+(\w+)\s*=\s*require\(['\"]([^'\"]+)['\"]\)", line)
@@ -760,42 +932,58 @@ def extract_js(line):
         return match.group(2), [match.group(1)]
     # Side-effect-only import/require, e.g. `import 'polyfill';`. No bound
     # name to look for elsewhere, but it still counts as a files_importing hit.
-    match = re.match(r"^\s*import\s+['\"]([^'\"]+)['\"]", line) or \
-        re.match(r"^\s*require\(['\"]([^'\"]+)['\"]\)", line)
+    match = re.match(r"^\s*import\s+['\"]([^'\"]+)['\"]", line)
+    if not match:
+        match = re.match(r"^\s*require\(['\"]([^'\"]+)['\"]\)", line)
     if match:
         return match.group(1), []
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_python
+################################################################################
+# FUNCTION: extract_python
 #
-# WHAT IT DOES:   Recognizes a `from module import ...` or `import
-#                 module` statement and extracts the top-level module name
-#                 and locally bound name(s).
-# WHY IT EXISTS:  Python-specific import extractor for usage scanning.
+# PURPOSE
+#     Recognizes a `from module import ...` or `import module`
+#     statement and extracts the top-level module name and locally
+#     bound name(s), the Python-specific import extractor for usage
+#     scanning.
 #
-# INPUTS:
-#   line (str) - one line of Python source.
+# RESPONSIBILITIES
+#     - Try both recognized import forms against the line.
+#     - Reduce the matched module path to its top-level package name.
+#     - Extract the locally bound name(s), resolving any "as" alias.
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (top_level_module, bound_names), or
-#   None if the line isn't an import statement. Only the top-level package
-#   name is returned (e.g. "os" for "import os.path"), since that's what
-#   a PyPI package name maps to.
+# PROCESS OVERVIEW
+#     1. Try to match a `from module import a, b` statement.
+#     2. If matched, reduce the module path to its top-level segment
+#        and extract each imported name's local binding, using the
+#        "as" alias when present.
+#     3. Otherwise, try to match a plain `import module [as alias]`
+#        statement.
+#     4. If matched, reduce the module path to its top-level segment
+#        and use the alias, or the module name itself, as the bound
+#        name.
+#     5. Return None if neither form matched.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - Only the top-level package name is returned (e.g. "os" for
+#       "import os.path"), since that's what a PyPI package name maps
+#       to.
 #
-# EXAMPLE:
-#   extract_python("from flask import Flask, request")
-#   -> ("flask", ["Flask", "request"])
-#   extract_python("import numpy as np")
-#   -> ("numpy", ["np"])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of Python source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (top_level_module, bound_names), or None if the line isn't
+#         an import statement.
+#
+# FAILURE CASES
+#     - Line isn't a `from ... import ...` or `import ...` statement:
+#       returns None.
+################################################################################
 def extract_python(line):
     """Matches `from module import a, b` and `import module [as alias]`.
     Returns (top_level_module, bound_names)."""
@@ -817,33 +1005,49 @@ def extract_python(line):
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_go
+################################################################################
+# FUNCTION: extract_go
 #
-# WHAT IT DOES:   Recognizes a Go import path, aliased or not, whether
-#                 written as a single-line `import "path"` or a bare
-#                 quoted line inside an `import (...)` block.
-# WHY IT EXISTS:  Go-specific import extractor for usage scanning.
+# PURPOSE
+#     Recognizes a Go import path, aliased or not, whether written as a
+#     single-line `import "path"` or a bare quoted line inside an
+#     `import (...)` block, the Go-specific import extractor for usage
+#     scanning.
 #
-# INPUTS:
-#   line (str) - one line of Go source.
+# RESPONSIBILITIES
+#     - Try the "import"-prefixed single-line form first.
+#     - Fall back to the bare-quote block-line form.
+#     - Extract the import path and its bound local name, using the
+#       alias when present or the path's last segment otherwise.
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (import_path, bound_names), or None
-#   if the line isn't an import.
+# PROCESS OVERVIEW
+#     1. Try to match the single-line `import "path"` (or aliased
+#        `import alias "path"`) form.
+#     2. If that didn't match, try to match a bare `"path"` (or
+#        aliased `alias "path"`) line, the shape used inside a
+#        parenthesized `import (...)` block.
+#     3. If either matched, use the alias if present, or the path's
+#        last "/"-separated segment otherwise, as the bound name.
+#     4. Return None if neither form matched.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - The "import"-prefixed pattern must be tried before the
+#       bare-quote pattern. Trying the bare-quote pattern first would
+#       misread `import "path"` itself, treating the literal word
+#       "import" as a package alias.
 #
-# EXAMPLE:
-#   extract_go('import "github.com/pkg/errors"')
-#   -> ("github.com/pkg/errors", ["errors"])
-#   extract_go('	e "github.com/pkg/errors"')  # inside an import (...) block
-#   -> ("github.com/pkg/errors", ["e"])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of Go source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (import_path, bound_names), or None if the line isn't an
+#         import.
+#
+# FAILURE CASES
+#     - Line isn't an import in either recognized form: returns None.
+################################################################################
 def extract_go(line):
     """Matches a Go import path, aliased or not. Returns (import_path,
     bound_names).
@@ -869,31 +1073,42 @@ def extract_go(line):
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_java
+################################################################################
+# FUNCTION: extract_java
 #
-# WHAT IT DOES:   Recognizes a Java `import` (including `import static`
-#                 and wildcard imports) and extracts its dotted path and
-#                 bound name.
-# WHY IT EXISTS:  Java-specific import extractor for usage scanning.
+# PURPOSE
+#     Recognizes a Java `import` (including `import static` and
+#     wildcard imports) and extracts its dotted path and bound name,
+#     the Java-specific import extractor for usage scanning.
 #
-# INPUTS:
-#   line (str) - one line of Java source.
+# RESPONSIBILITIES
+#     - Match a Java import statement, including the optional `static`
+#       keyword and an optional trailing `.*` wildcard.
+#     - Extract the dotted import path and its bound local name (the
+#       path's last segment).
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (dotted_path, bound_names), or None
-#   if the line isn't an import.
+# PROCESS OVERVIEW
+#     1. Try to match an `import [static] a.b.Class;` (or
+#        `a.b.*;`) statement.
+#     2. If matched, take the last dot-separated segment of the dotted
+#        path as the bound name.
+#     3. Return None if the line doesn't match.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   extract_java("import org.springframework.web.bind.annotation.GetMapping;")
-#   -> ("org.springframework.web.bind.annotation.GetMapping", ["GetMapping"])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of Java source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (dotted_path, bound_names), or None if the line isn't an
+#         import.
+#
+# FAILURE CASES
+#     - Line isn't an import statement: returns None.
+################################################################################
 def extract_java(line):
     """Matches `import [static] a.b.Class;` (wildcard imports too).
     Returns (dotted_path, bound_names)."""
@@ -905,30 +1120,43 @@ def extract_java(line):
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_rust
+################################################################################
+# FUNCTION: extract_rust
 #
-# WHAT IT DOES:   Recognizes a Rust `use crate::path::Symbol;` statement
-#                 and extracts the crate name and bound symbol.
-# WHY IT EXISTS:  Rust-specific import extractor for usage scanning.
+# PURPOSE
+#     Recognizes a Rust `use crate::path::Symbol;` statement and
+#     extracts the crate name and bound symbol, the Rust-specific
+#     import extractor for usage scanning.
 #
-# INPUTS:
-#   line (str) - one line of Rust source.
+# RESPONSIBILITIES
+#     - Match a `use` statement.
+#     - Reduce its path to the top-level crate name.
+#     - Extract the bound symbol, or fall back to the crate name if
+#       none was given.
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (crate_name, bound_names), or None
-#   if the line isn't a `use` statement.
+# PROCESS OVERVIEW
+#     1. Try to match a `use crate::path::Symbol;` statement.
+#     2. If matched, take the first "::"-separated segment as the
+#        crate name.
+#     3. Use the matched symbol as the bound name, or the crate name
+#        itself if no symbol was captured.
+#     4. Return None if the line doesn't match.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   extract_rust("use serde::Deserialize;")
-#   -> ("serde", ["Deserialize"])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of Rust source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (crate_name, bound_names), or None if the line isn't a `use`
+#         statement.
+#
+# FAILURE CASES
+#     - Line isn't a `use` statement: returns None.
+################################################################################
 def extract_rust(line):
     """Matches `use crate::path::Symbol;`. Returns (crate_name,
     bound_names)."""
@@ -940,29 +1168,39 @@ def extract_rust(line):
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_dotnet
+################################################################################
+# FUNCTION: extract_dotnet
 #
-# WHAT IT DOES:   Recognizes a C# `using Namespace.Sub;` statement.
-# WHY IT EXISTS:  .NET-specific import extractor for usage scanning.
+# PURPOSE
+#     Recognizes a C# `using Namespace.Sub;` statement, the
+#     .NET-specific import extractor for usage scanning.
 #
-# INPUTS:
-#   line (str) - one line of C# source.
+# RESPONSIBILITIES
+#     - Match a `using` statement.
+#     - Extract the dotted namespace and its bound local name (the
+#       namespace's last segment).
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (dotted_namespace, bound_names), or
-#   None if the line isn't a `using` statement.
+# PROCESS OVERVIEW
+#     1. Try to match a `using Namespace.Sub;` statement.
+#     2. If matched, take the last dot-separated segment as the bound
+#        name.
+#     3. Return None if the line doesn't match.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   extract_dotnet("using Newtonsoft.Json;")
-#   -> ("Newtonsoft.Json", ["Json"])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of C# source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (dotted_namespace, bound_names), or None if the line isn't a
+#         `using` statement.
+#
+# FAILURE CASES
+#     - Line isn't a `using` statement: returns None.
+################################################################################
 def extract_dotnet(line):
     """Matches `using Namespace.Sub;`. Returns (dotted_namespace,
     bound_names)."""
@@ -973,31 +1211,43 @@ def extract_dotnet(line):
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_dart
+################################################################################
+# FUNCTION: extract_dart
 #
-# WHAT IT DOES:   Recognizes a Dart `import 'package:name/path.dart'`
-#                 statement, with an optional `as alias`.
-# WHY IT EXISTS:  Dart-specific import extractor for usage scanning.
+# PURPOSE
+#     Recognizes a Dart `import 'package:name/path.dart'` statement,
+#     with an optional `as alias`, the Dart-specific import extractor
+#     for usage scanning.
 #
-# INPUTS:
-#   line (str) - one line of Dart source.
+# RESPONSIBILITIES
+#     - Match a `package:` import statement specifically.
+#     - Extract the package name and its bound local name, using the
+#       alias when present.
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (package_name, bound_names), or None
-#   if the line isn't a package: import (relative/dart: imports aren't
-#   matched here, they aren't third-party dependencies).
+# PROCESS OVERVIEW
+#     1. Try to match an `import 'package:name/path.dart' [as alias];`
+#        statement.
+#     2. If matched, use the alias if present, or the package name
+#        with hyphens converted to underscores otherwise, as the bound
+#        name.
+#     3. Return None if the line doesn't match.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - Only `package:` imports are matched; relative and `dart:`
+#       imports are not, since they aren't third-party dependencies.
 #
-# EXAMPLE:
-#   extract_dart("import 'package:http/http.dart' as http;")
-#   -> ("http", ["http"])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of Dart source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (package_name, bound_names), or None if the line isn't a
+#         `package:` import.
+#
+# FAILURE CASES
+#     - Line isn't a `package:` import: returns None.
+################################################################################
 def extract_dart(line):
     """Matches `import 'package:name/path.dart' [as alias];`. Returns
     (package_name, bound_names)."""
@@ -1009,33 +1259,41 @@ def extract_dart(line):
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_cpp
+################################################################################
+# FUNCTION: extract_cpp
 #
-# WHAT IT DOES:   Recognizes a C/C++ `#include <path>` or `#include
-#                 "path"` directive and extracts the first path segment.
-# WHY IT EXISTS:  C/C++-specific import extractor for usage scanning. A
-#                 header include doesn't bind a named symbol the way an
-#                 import/use statement does in other languages, so this
-#                 only ever returns an empty bound_names list, see
-#                 WEAK_ECOSYSTEMS.
+# PURPOSE
+#     Recognizes a C/C++ `#include <path>` or `#include "path"`
+#     directive and extracts the first path segment, the
+#     C/C++-specific import extractor for usage scanning.
 #
-# INPUTS:
-#   line (str) - one line of C/C++ source.
+# RESPONSIBILITIES
+#     - Match an #include directive, angle-bracket or quoted form.
+#     - Extract the first "/"-separated segment of the included path.
 #
-# RETURNS:
-#   (tuple[str, list[str]] or None) - (first_path_segment, []), or None if
-#   the line isn't an #include.
+# PROCESS OVERVIEW
+#     1. Try to match an `#include <path>` or `#include "path"`
+#        directive.
+#     2. If matched, take the first "/"-separated segment of the path.
+#     3. Return None if the line doesn't match.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem() via the EXTRACTORS dispatch
-#                 table.
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - A header include doesn't bind a named symbol the way an
+#       import/use statement does in other languages, so this always
+#       returns an empty bound_names list; see WEAK_ECOSYSTEMS.
 #
-# EXAMPLE:
-#   extract_cpp('#include <fmt/format.h>') -> ("fmt", [])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     line (str)
+#         One line of C/C++ source.
+#
+# RETURNS
+#     tuple[str, list[str]] or None
+#         (first_path_segment, []), or None if the line isn't an
+#         #include.
+#
+# FAILURE CASES
+#     - Line isn't an #include directive: returns None.
+################################################################################
 def extract_cpp(line):
     """Matches `#include <path>` or `#include "path"`. Returns
     (first_path_segment, []): a C/C++ header doesn't bind a named symbol
@@ -1047,38 +1305,53 @@ def extract_cpp(line):
     return None
 
 
-# ------------------------------------------------------------------------
-# extract_weak
+################################################################################
+# FUNCTION: extract_weak
 #
-# WHAT IT DOES:   Builds a simple line-matching function from a regex,
-#                 for ecosystems where no real bound symbol can be
-#                 recovered (only the fact that an import happened).
-# WHY IT EXISTS:  Ruby's `require`/`require_relative` and PHP's `use`
-#                 don't bind a symbol name usage scanning can search for
-#                 elsewhere (see WEAK_ECOSYSTEMS's module docstring), so
-#                 rather than duplicating a tiny "match this regex, return
-#                 group 1" function twice, this factory builds both from
-#                 one shared implementation.
+# PURPOSE
+#     Builds a simple line-matching function from a regex, for
+#     ecosystems where no real bound symbol can be recovered (only the
+#     fact that an import happened). Ruby's `require`/`require_relative`
+#     and PHP's `use` don't bind a symbol name usage scanning can
+#     search for elsewhere (see WEAK_ECOSYSTEMS's module docstring), so
+#     rather than duplicating a tiny "match this regex, return group 1"
+#     function twice, this factory builds both from one shared
+#     implementation.
 #
-# INPUTS:
-#   pattern (re.Pattern) - a compiled regex with one capture group for the
-#     module/namespace name, anchored to match from the start of a line.
+# RESPONSIBILITIES
+#     - Return a function that matches a source line against the given
+#       pattern.
+#     - That returned function extracts the pattern's captured
+#       module/namespace name on a match, with an empty bound_names
+#       list.
 #
-# RETURNS:
-#   (Callable[[str], tuple[str, list] or None]) - a function with the same
-#   shape as extract_js/extract_python/etc: takes one source line, returns
-#   (module_key, []) on a match or None otherwise.
+# PROCESS OVERVIEW
+#     1. Define a closure that matches a line against pattern.
+#     2. On a match, that closure returns (captured_name, []).
+#     3. On no match, that closure returns None.
+#     4. Return the closure itself, not its result.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      The EXTRACTORS dict literal below, to build the "ruby"
-#                 and "php" entries.
-# CALLS:          None directly; the returned closure calls pattern.match().
+# IMPORTANT DETAILS
+#     - The returned function has the same shape as
+#       extract_js/extract_python/etc: it takes one source line and
+#       returns (module_key, []) or None, so it can be dropped
+#       directly into the EXTRACTORS dispatch table.
 #
-# EXAMPLE:
-#   match_require = extract_weak(re.compile(r"^\s*require\s+['\"]([^'\"]+)['\"]"))
-#   match_require("require 'json'") -> ("json", [])
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     pattern (re.Pattern)
+#         A compiled regex with one capture group for the
+#         module/namespace name, anchored to match from the start of a
+#         line.
+#
+# RETURNS
+#     Callable[[str], tuple[str, list] or None]
+#         A function that takes one source line and returns
+#         (module_key, []) on a match, or None otherwise.
+#
+# FAILURE CASES
+#     - None; the returned function itself never raises, and returns
+#       None on no match.
+################################################################################
 def extract_weak(pattern):
     """Wraps a simple require/use regex for the WEAK_ECOSYSTEMS, where no
     real bound symbol name can be recovered, only the fact of the import."""
@@ -1107,45 +1380,77 @@ EXTRACTORS = {
 }
 
 
-# ------------------------------------------------------------------------
-# module_matches
+################################################################################
+# FUNCTION: module_matches
 #
-# WHAT IT DOES:   Decides whether an import's module_key (as extracted by
-#                 an EXTRACTORS function) actually refers to a given
-#                 dependency name (from a LIST_DEPS function).
-# WHY IT EXISTS:  Every ecosystem resolves an import string to a package
-#                 name by a different convention (npm scoped packages,
-#                 Python's hyphen/underscore ambiguity, Java's groupId
-#                 prefix matching, PHP's PSR-4 namespace mapping, etc.);
-#                 this is the single place all of those conventions are
-#                 encoded, so scan_usage_for_ecosystem() doesn't need to
-#                 know any ecosystem-specific details itself.
+# PURPOSE
+#     Decides whether an import's module_key (as extracted by an
+#     EXTRACTORS function) actually refers to a given dependency name
+#     (from a LIST_DEPS function). Every ecosystem resolves an import
+#     string to a package name by a different convention (npm scoped
+#     packages, Python's hyphen/underscore ambiguity, Java's groupId
+#     prefix matching, PHP's PSR-4 namespace mapping, etc.); this is the
+#     single place all of those conventions are encoded, so
+#     scan_usage_for_ecosystem() doesn't need to know any
+#     ecosystem-specific details itself.
 #
-# INPUTS:
-#   ecosystem (str) - which ecosystem's matching rule to apply.
-#   module_key (str) - the import path/module string extracted from
-#     source, e.g. "@scope/pkg/sub" or "org.springframework.web".
-#   dep_name (str) - the dependency name from the manifest to test against.
-#   dep_match_key (str or None) - for java only, the groupId to match
-#     against instead of dep_name (see list_java_deps()).
+# RESPONSIBILITIES
+#     - Apply the correct matching rule for the given ecosystem.
+#     - Return whether module_key refers to dep_name (or, for Java,
+#       dep_match_key) under that rule.
 #
-# RETURNS:
-#   (bool) - True if module_key is considered to refer to dep_name (or,
-#   for java, dep_match_key) under that ecosystem's naming convention;
-#   False otherwise, including for any ecosystem not explicitly handled.
+# PROCESS OVERVIEW
+#     1. Look at which ecosystem was given.
+#     2. Apply that ecosystem's specific matching rule (see IMPORTANT
+#        DETAILS for each one) to module_key and dep_name/dep_match_key.
+#     3. Return the boolean result.
+#     4. For any ecosystem not explicitly handled, return False.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem().
-# CALLS:          re.split() (PHP branch only).
+# IMPORTANT DETAILS
+#     - javascript: a scoped package ("@scope/pkg/sub/path") matches on
+#       its first two path segments; an unscoped package matches on its
+#       first segment only.
+#     - python: PyPI package names and importable module names
+#       sometimes differ only by hyphen-vs-underscore, so both the
+#       literal names and their hyphen/underscore-normalized forms are
+#       compared. A genuine name-vs-import mismatch (e.g.
+#       beautifulsoup4/bs4) isn't recoverable from text alone.
+#     - java: dep_match_key is the groupId (see list_java_deps()); an
+#       import matches if it's exactly that groupId or a sub-package of
+#       it.
+#     - php: PHP namespaces are PSR-4-mapped by the package author and
+#       aren't derivable from the composer "vendor/package" name in
+#       general. This guesses the common convention (CamelCase each
+#       segment of the vendor name) and will miss packages that don't
+#       follow it, that's the tradeoff for getting any signal at all
+#       out of a static regex sweep.
+#     - cpp: compares the header path's first segment against the
+#       Conan/vcpkg package name, a best-effort convention (e.g.
+#       #include <fmt/format.h> -> "fmt"), not guaranteed since header
+#       layout is author-chosen, not registry-enforced.
 #
-# EXAMPLE:
-#   module_matches("javascript", "@babel/core/lib/x", "@babel/core")
-#   -> True
-#   module_matches("python", "bs4", "beautifulsoup4")
-#   -> False  # a genuine name-vs-import mismatch, not recoverable from
-#             # text alone, see the inline comment in the function body.
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     ecosystem (str)
+#         Which ecosystem's matching rule to apply.
+#     module_key (str)
+#         The import path/module string extracted from source, e.g.
+#         "@scope/pkg/sub" or "org.springframework.web".
+#     dep_name (str)
+#         The dependency name from the manifest to test against.
+#     dep_match_key (str or None)
+#         For java only, the groupId to match against instead of
+#         dep_name.
+#
+# RETURNS
+#     bool
+#         True if module_key is considered to refer to dep_name (or,
+#         for java, dep_match_key) under that ecosystem's naming
+#         convention; False otherwise, including for any ecosystem not
+#         explicitly handled.
+#
+# FAILURE CASES
+#     - Ecosystem not explicitly handled: returns False.
+################################################################################
 def module_matches(ecosystem, module_key, dep_name, dep_match_key=None):
     """Does an import's module_key (from an EXTRACTORS function) refer to
     dep_name (a name from a LIST_DEPS function)? Ecosystem-specific because
@@ -1154,8 +1459,9 @@ def module_matches(ecosystem, module_key, dep_name, dep_match_key=None):
         # Scoped packages ("@scope/pkg/sub/path") match on the first two
         # path segments; unscoped packages match on the first segment only.
         if module_key.startswith("@"):
-            parts = module_key.split("/")
-            module_key = "/".join(parts[:2]) if len(parts) > 1 else module_key
+            scoped_path_parts = module_key.split("/")
+            if len(scoped_path_parts) > 1:
+                module_key = "/".join(scoped_path_parts[:2])
         else:
             module_key = module_key.split("/")[0]
         return module_key == dep_name
@@ -1185,10 +1491,10 @@ def module_matches(ecosystem, module_key, dep_name, dep_match_key=None):
         # This guesses the common convention (CamelCase each segment) and
         # will miss packages that don't follow it, that's the tradeoff for
         # getting any signal at all out of a static regex sweep.
-        vendor, _, package = dep_name.partition("/")
-        guessed_namespace = "".join(p.capitalize() for p in re.split(r"[-_]", vendor)) + "\\" + \
-            "".join(p.capitalize() for p in re.split(r"[-_]", package))
-        return module_key.startswith(guessed_namespace.split("\\")[0])
+        vendor_name, _, package_name = dep_name.partition("/")
+        guessed_vendor_namespace_segment = "".join(
+            word.capitalize() for word in re.split(r"[-_]", vendor_name))
+        return module_key.startswith(guessed_vendor_namespace_segment)
     if ecosystem == "cpp":
         # Header path's first segment vs. the Conan/vcpkg package name, a
         # best-effort convention (e.g. #include <fmt/format.h> -> "fmt"),
@@ -1200,99 +1506,159 @@ def module_matches(ecosystem, module_key, dep_name, dep_match_key=None):
 
 # ===== USAGE MODE =====
 
-# ------------------------------------------------------------------------
-# usage_tier
+# These thresholds are hand-picked heuristics documented in SKILL.md
+# Step 1, not derived from any formula. If you change one, update
+# SKILL.md's Step 1 to match, or the skill's own explanation of these
+# tiers will silently go stale.
+HEAVY_FILES_IMPORTING_THRESHOLD = 5
+HEAVY_CALL_SITE_COUNT_THRESHOLD = 20
+MODERATE_FILES_IMPORTING_THRESHOLD = 3
+MINIMAL_CALL_SITE_COUNT_THRESHOLD = 2
+MINIMAL_FILES_IMPORTING_THRESHOLD = 1
+LIGHT_CALL_SITE_COUNT_THRESHOLD = 6
+
+################################################################################
+# FUNCTION: usage_tier
 #
-# WHAT IT DOES:   Buckets a dependency's usage into one of four rough
-#                 tiers based on how many files import it and how many
-#                 call sites were found.
-# WHY IT EXISTS:  Turns two raw numbers into a single human-readable
-#                 signal ("heavy"/"moderate"/"light"/"minimal") the
-#                 dead-weight-detector skill can act on directly.
+# PURPOSE
+#     Buckets a dependency's usage into one of four rough tiers based
+#     on how many files import it and how many call sites were found,
+#     turning two raw numbers into a single human-readable signal the
+#     dead-weight-detector skill can act on directly.
 #
-# INPUTS:
-#   files_importing (int) - number of distinct files that import this
-#     dependency.
-#   call_site_count (int or None) - approximate number of times a bound
-#     symbol from this dependency is referenced; if None, files_importing
-#     is used in its place (this happens for weak-signal ecosystems or
-#     side-effect-only imports, see scan_usage_for_ecosystem()).
+# RESPONSIBILITIES
+#     - Treat a missing call site count as equivalent to the files
+#       importing count.
+#     - Apply the hand-picked thresholds, in order, to decide the tier.
 #
-# RETURNS:
-#   (str) - one of "heavy", "moderate", "light", "minimal". Never called
-#   with files_importing == 0 (the caller reports "unused" itself in that
-#   case, see scan_usage_for_ecosystem()).
+# PROCESS OVERVIEW
+#     1. If call_site_count is None, use files_importing in its place.
+#     2. If files_importing or call_site_count is high enough, return
+#        "heavy".
+#     3. Otherwise, if files_importing is moderately high, return
+#        "moderate".
+#     4. Otherwise, if both numbers are very low, return "minimal".
+#     5. Otherwise, if call_site_count is still fairly low, return
+#        "light".
+#     6. Otherwise, return "moderate".
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_usage_for_ecosystem().
-# CALLS:          None.
+# IMPORTANT DETAILS
+#     - These are heuristic cutoffs, not a precise measurement; see
+#       SKILL.md Step 1 for the caveats. Keep the threshold constants
+#       above in sync with the thresholds documented there if they
+#       ever change.
+#     - Never called with files_importing == 0; the caller reports
+#       "unused" itself in that case, see scan_usage_for_ecosystem().
 #
-# EXAMPLE:
-#   usage_tier(files_importing=6, call_site_count=50) -> "heavy"
-#   usage_tier(files_importing=1, call_site_count=1)  -> "minimal"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     files_importing (int)
+#         Number of distinct files that import this dependency.
+#     call_site_count (int or None)
+#         Approximate number of times a bound symbol from this
+#         dependency is referenced; if None, files_importing is used
+#         in its place (this happens for weak-signal ecosystems or
+#         side-effect-only imports, see scan_usage_for_ecosystem()).
+#
+# RETURNS
+#     str
+#         One of "heavy", "moderate", "light", "minimal".
+#
+# FAILURE CASES
+#     - None.
+################################################################################
 def usage_tier(files_importing, call_site_count):
     """Heuristic cutoffs, not a precise measurement, see SKILL.md Step 1
     for the caveats. Keep these in sync with the thresholds documented
     there if they ever change."""
     if call_site_count is None:
         call_site_count = files_importing
-    # These thresholds (5 files / 20 call sites / etc.) are hand-picked
-    # heuristics documented in SKILL.md, not derived from any formula. If
-    # you change one, update SKILL.md's Step 1 to match, or the skill's
-    # own explanation of these tiers will silently go stale.
-    if files_importing >= 5 or call_site_count > 20:
+    if files_importing >= HEAVY_FILES_IMPORTING_THRESHOLD or call_site_count > HEAVY_CALL_SITE_COUNT_THRESHOLD:
         return "heavy"
-    if files_importing >= 3:
+    if files_importing >= MODERATE_FILES_IMPORTING_THRESHOLD:
         return "moderate"
-    if call_site_count <= 2 and files_importing <= 1:
+    if call_site_count <= MINIMAL_CALL_SITE_COUNT_THRESHOLD and files_importing <= MINIMAL_FILES_IMPORTING_THRESHOLD:
         return "minimal"
-    if call_site_count <= 6:
+    if call_site_count <= LIGHT_CALL_SITE_COUNT_THRESHOLD:
         return "light"
     return "moderate"
 
 
-# ------------------------------------------------------------------------
-# scan_usage_for_ecosystem
+################################################################################
+# FUNCTION: scan_usage_for_ecosystem
 #
-# WHAT IT DOES:   For one ecosystem's dependencies, sweeps every matching
-#                 source file for import statements, counts how many files
-#                 import each dependency and (where possible) how many
-#                 times its bound symbols are actually referenced, and
-#                 assigns a usage tier to each.
-# WHY IT EXISTS:  This is the core of usage mode: turning "what's declared
-#                 as a dependency" plus "what's actually imported/used in
-#                 source" into one usage report per dependency.
+# PURPOSE
+#     For one ecosystem's dependencies, sweeps every matching source
+#     file for import statements, counts how many files import each
+#     dependency and (where possible) how many times its bound symbols
+#     are actually referenced, and assigns a usage tier to each. This
+#     is the core of usage mode: turning "what's declared as a
+#     dependency" plus "what's actually imported/used in source" into
+#     one usage report per dependency.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   ecosystem (str) - which ecosystem's extractor/matcher rules to use.
-#   dependency_entries (list) - (name, manifest_file) pairs for most
-#     ecosystems, or (matching_key, manifest_file, display_name) triples
-#     for java specifically (see list_java_deps()).
+# RESPONSIBILITIES
+#     - Build a de-duplicated index of dependencies to search for.
+#     - Sweep every source file with a matching extension for import
+#       statements.
+#     - Match each import back to a dependency via module_matches().
+#     - Count files-importing and (where possible) call-site totals
+#       per dependency.
+#     - Assign a usage tier to each dependency.
 #
-# RETURNS:
-#   (list[dict]) - one entry per distinct dependency name, each with
-#   "name", "files_importing", "call_site_count" (int, or None if no real
-#   bound symbol was ever found to count), "distinct_symbols_used",
-#   "usage_tier", and "usage_signal" ("weak" for ruby/php/cpp, "standard"
-#   otherwise). Sorted by name. Empty list if dependency_entries is empty.
+# PROCESS OVERVIEW
+#     1. If dependency_entries is empty, return an empty list.
+#     2. Build a de-duplicated dependency index: for java, dedupe by
+#        display name (a multi-module pom can list the same artifact
+#        more than once); for every other ecosystem, dedupe by name.
+#     3. Start a zeroed usage-tracking entry for every dependency in
+#        that index.
+#     4. For each source file with a matching extension, extract every
+#        recognized import line and match each one against every
+#        dependency in the index.
+#     5. For each dependency matched in that file, record the file as
+#        an importer, record its bound symbol names, and either count
+#        the raw import-line occurrences (for weak-signal ecosystems or
+#        side-effect-only imports) or count whole-word occurrences of
+#        each bound symbol elsewhere in the file.
+#     6. Once every file has been swept, build one result entry per
+#        dependency: its files-importing count, call-site count (or
+#        None if no real bound symbol was ever found), sorted distinct
+#        symbols used, computed usage tier (or "unused" if never
+#        imported), and usage signal ("weak" or "standard").
+#     7. Return the result entries, sorted by name.
 #
-# RAISES/ERRORS:  None expected; a malformed/unreadable source file is
-#                 skipped via read_text()'s empty-string fallback.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_usage().
-# CALLS:          find_files(), read_text(), the ecosystem's EXTRACTORS
-#                 function, module_matches(), usage_tier().
+# IMPORTANT DETAILS
+#     - Counting a bound symbol's call sites is an approximation, not
+#       an exact count: it can overcount when the symbol name also
+#       shows up inside the import path/module string itself, and it
+#       can't distinguish a real call from an unrelated variable that
+#       happens to share the name. See SKILL.md's usage caveats.
+#     - call_site_count is only meaningful once a real bound symbol has
+#       been seen to search for; weak-signal ecosystems always report
+#       their import-count-only total instead, via usage_signal
+#       "weak".
+#     - A malformed/unreadable source file is skipped via
+#       read_text()'s empty-string fallback, not treated as an error.
 #
-# EXAMPLE:
-#   scan_usage_for_ecosystem("/repo", "python",
-#                             [("requests", "/repo/requirements.txt")])
-#   -> [{"name": "requests", "files_importing": 4, "call_site_count": 12,
-#        "distinct_symbols_used": ["get", "post"], "usage_tier": "moderate",
-#        "usage_signal": "standard"}]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     ecosystem (str)
+#         Which ecosystem's extractor/matcher rules to use.
+#     dependency_entries (list)
+#         (name, manifest_file) pairs for most ecosystems, or
+#         (matching_key, manifest_file, display_name) triples for java
+#         specifically (see list_java_deps()).
+#
+# RETURNS
+#     list[dict]
+#         One entry per distinct dependency name, each with "name",
+#         "files_importing", "call_site_count", "distinct_symbols_used",
+#         "usage_tier", and "usage_signal". Sorted by name. Empty list
+#         if dependency_entries is empty.
+#
+# FAILURE CASES
+#     - dependency_entries is empty: returns an empty list.
+################################################################################
 def scan_usage_for_ecosystem(root, ecosystem, dependency_entries):
     """dependency_entries: list of (name, manifest_file) pairs, or
     (matching_key, manifest_file, display_name) triples for java."""
@@ -1309,18 +1675,20 @@ def scan_usage_for_ecosystem(root, ecosystem, dependency_entries):
         java_dep_by_display_name = {}
         for match_key, manifest, display_name in dependency_entries:
             java_dep_by_display_name.setdefault(display_name, {"match_key": match_key, "manifest": manifest})
-        dependency_index = [
-            (display_name, v["match_key"], v["manifest"])
-            for display_name, v in java_dep_by_display_name.items()
-        ]
+        dependency_index = []
+        for display_name, dependency_info in java_dep_by_display_name.items():
+            dependency_index.append((display_name, dependency_info["match_key"], dependency_info["manifest"]))
     else:
-        dependency_names = sorted({name for name, _manifest in dependency_entries})
-        dependency_index = [(name, None, None) for name in dependency_names]
+        distinct_dependency_names = set()
+        for name, _manifest in dependency_entries:
+            distinct_dependency_names.add(name)
+        dependency_index = []
+        for name in sorted(distinct_dependency_names):
+            dependency_index.append((name, None, None))
 
-    usage_by_name = {
-        name: {"files_importing": 0, "call_site_count": 0, "symbols": set()}
-        for name, _match_key, _manifest in dependency_index
-    }
+    usage_by_name = {}
+    for name, _match_key, _manifest in dependency_index:
+        usage_by_name[name] = {"files_importing": 0, "call_site_count": 0, "symbols": set()}
 
     for path in find_files(root, suffixes=extensions):
         text = read_text(path)
@@ -1374,46 +1742,71 @@ def scan_usage_for_ecosystem(root, ecosystem, dependency_entries):
         # call_site_count only means something once we've actually seen a
         # bound symbol to search for; weak-signal ecosystems always report
         # their (import-count-only) total instead.
-        call_site_count = usage["call_site_count"] if (usage["symbols"] or weak_signal) else None
+        if usage["symbols"] or weak_signal:
+            call_site_count = usage["call_site_count"]
+        else:
+            call_site_count = None
+
+        if usage["files_importing"]:
+            dependency_usage_tier = usage_tier(usage["files_importing"], call_site_count)
+        else:
+            dependency_usage_tier = "unused"
+
+        if weak_signal:
+            usage_signal = "weak"
+        else:
+            usage_signal = "standard"
+
         results.append({
             "name": name,
             "files_importing": usage["files_importing"],
             "call_site_count": call_site_count,
-            "distinct_symbols_used": sorted(usage["symbols"]) if usage["symbols"] else [],
-            "usage_tier": usage_tier(usage["files_importing"], call_site_count)
-            if usage["files_importing"] else "unused",
-            "usage_signal": "weak" if weak_signal else "standard",
+            "distinct_symbols_used": sorted(usage["symbols"]),
+            "usage_tier": dependency_usage_tier,
+            "usage_signal": usage_signal,
         })
-    return sorted(results, key=lambda d: d["name"])
+    return sorted(results, key=lambda entry: entry["name"])
 
 
-# ------------------------------------------------------------------------
-# run_usage
+################################################################################
+# FUNCTION: run_usage
 #
-# WHAT IT DOES:   Runs every ecosystem's dependency lister, then the
-#                 usage scan, for whichever ecosystems actually have
-#                 dependencies in this repo.
-# WHY IT EXISTS:  This is the top-level function for usage mode's
-#                 "usage <path>" CLI invocation.
+# PURPOSE
+#     Runs every ecosystem's dependency lister, then the usage scan,
+#     for whichever ecosystems actually have dependencies in this
+#     repo. This is the top-level function for usage mode's "usage
+#     <path>" CLI invocation.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Run every ecosystem's LIST_DEPS lister against root.
+#     - For every ecosystem that found at least one dependency, run
+#       scan_usage_for_ecosystem() on those dependencies.
+#     - Collect the results, keyed by ecosystem.
 #
-# RETURNS:
-#   (dict) - {ecosystem: [usage entry, ...]}, one key per ecosystem that
-#   has at least one dependency, using the same entry shape returned by
-#   scan_usage_for_ecosystem(). Ecosystems with zero dependencies are
-#   omitted entirely rather than included with an empty list.
+# PROCESS OVERVIEW
+#     1. For each ecosystem in LIST_DEPS, list its dependencies.
+#     2. If that ecosystem has no dependencies, skip it entirely.
+#     3. Otherwise, run scan_usage_for_ecosystem() and record the
+#        result under that ecosystem's key.
+#     4. Return the collected results.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only; entirely local, no network).
-# CALLED BY:      main() (usage mode).
-# CALLS:          Every function in LIST_DEPS, scan_usage_for_ecosystem().
+# IMPORTANT DETAILS
+#     - Ecosystems with zero dependencies are omitted entirely from
+#       the result, rather than included with an empty list.
 #
-# EXAMPLE:
-#   run_usage("/repo")
-#   -> {"python": [...], "javascript": [...]}  # only ecosystems present
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     dict
+#         {ecosystem: [usage entry, ...]}, one key per ecosystem that
+#         has at least one dependency, using the same entry shape
+#         returned by scan_usage_for_ecosystem().
+#
+# FAILURE CASES
+#     - None expected.
+################################################################################
 def run_usage(root):
     """Runs every ecosystem's LIST_DEPS lister, then scan_usage_for_ecosystem()
     on whatever it finds. Returns {ecosystem: [usage entry, ...]}, omitting
@@ -1435,34 +1828,42 @@ def run_usage(root):
 # not "no version." None of these are real lockfile parsers, they're
 # regex/JSON-key lookups scoped to exactly the fields needed here.
 
-# ------------------------------------------------------------------------
-# resolve_version_javascript
+################################################################################
+# FUNCTION: resolve_version_javascript
 #
-# WHAT IT DOES:   Resolves the pinned version of an npm package from
-#                 whichever JavaScript lockfile is present.
-# WHY IT EXISTS:  health mode needs the exact installed version to scope
-#                 its OSV.dev vulnerability query correctly (see the
-#                 module docstring); this dispatches to the right
-#                 lockfile-specific resolver.
+# PURPOSE
+#     Resolves the pinned version of an npm package from whichever
+#     JavaScript lockfile is present. health mode needs the exact
+#     installed version to scope its OSV.dev vulnerability query
+#     correctly (see the module docstring); this dispatches to the
+#     right lockfile-specific resolver.
 #
-# INPUTS:
-#   root (str) - repo root, used to locate the lockfile.
-#   name (str) - npm package name to resolve.
+# RESPONSIBILITIES
+#     - Try each lockfile-specific resolver in turn.
+#     - Return the first resolved version found.
 #
-# RETURNS:
-#   (str or None) - the resolved version string, or None if no lockfile
-#   has an entry for name.
+# PROCESS OVERVIEW
+#     1. Try _resolve_version_package_lock_json().
+#     2. If that found nothing, try _resolve_version_yarn_lock().
+#     3. If that found nothing, try _resolve_version_pnpm_lock().
 #
-# RAISES/ERRORS:  None expected (delegates to functions that already
-#                 handle their own parse failures).
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          _resolve_version_package_lock_json(),
-#                 _resolve_version_yarn_lock(), _resolve_version_pnpm_lock().
+# IMPORTANT DETAILS
+#     - Tried in that order, first match wins.
 #
-# EXAMPLE:
-#   resolve_version_javascript("/repo", "left-pad") -> "1.3.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root, used to locate the lockfile.
+#     name (str)
+#         npm package name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version string, or None if no lockfile has an
+#         entry for name.
+#
+# FAILURE CASES
+#     - No lockfile has an entry for name: returns None.
+################################################################################
 def resolve_version_javascript(root, name):
     """Resolved version from package-lock.json, yarn.lock, or
     pnpm-lock.yaml, tried in that order, first match wins."""
@@ -1475,33 +1876,50 @@ def resolve_version_javascript(root, name):
     return _resolve_version_pnpm_lock(root, name)
 
 
-# ------------------------------------------------------------------------
-# _resolve_version_package_lock_json
+################################################################################
+# FUNCTION: _resolve_version_package_lock_json
 #
-# WHAT IT DOES:   Resolves a package's version from package-lock.json,
-#                 handling both the modern (v2/v3) and legacy (v1) shapes.
-# WHY IT EXISTS:  npm changed package-lock.json's internal structure
-#                 between major lockfile versions; this isolates that
-#                 version-shape handling from the rest of
-#                 resolve_version_javascript().
+# PURPOSE
+#     Resolves a package's version from package-lock.json, handling
+#     both the modern (v2/v3) and legacy (v1) shapes. npm changed
+#     package-lock.json's internal structure between major lockfile
+#     versions; this isolates that version-shape handling from the
+#     rest of resolve_version_javascript().
 #
-# INPUTS:
-#   root (str) - repo root, used to locate package-lock.json.
-#   name (str) - npm package name to resolve.
+# RESPONSIBILITIES
+#     - Find package-lock.json files.
+#     - Check the v2/v3 flat "packages" map shape first.
+#     - Check the v1 nested "dependencies" map shape if the v2/v3 shape
+#       didn't have an entry.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if not found in either
-#   lockfile shape.
+# PROCESS OVERVIEW
+#     1. Find package-lock.json files under root.
+#     2. Parse each one as JSON.
+#     3. Check its "packages" map (v2/v3 shape) for a
+#        "node_modules/<name>" entry with a version.
+#     4. If not found there, check its "dependencies" map (v1 shape)
+#        for a <name> entry with a version.
+#     5. Return the first version found, or None if neither shape has
+#        an entry for name.
 #
-# RAISES/ERRORS:  None expected; malformed JSON is handled by read_json()
-#                 returning None.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version_javascript().
-# CALLS:          find_files(), read_json().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   _resolve_version_package_lock_json("/repo", "left-pad") -> "1.3.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root, used to locate package-lock.json.
+#     name (str)
+#         npm package name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if not found in either
+#         lockfile shape.
+#
+# FAILURE CASES
+#     - No package-lock.json, or neither shape has an entry for name:
+#       returns None.
+################################################################################
 def _resolve_version_package_lock_json(root, name):
     """Resolved version from package-lock.json, handling both the v2/v3
     (flat "packages" map) and v1 (nested "dependencies" map) shapes."""
@@ -1524,36 +1942,52 @@ def _resolve_version_package_lock_json(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# _resolve_version_yarn_lock
+################################################################################
+# FUNCTION: _resolve_version_yarn_lock
 #
-# WHAT IT DOES:   Resolves a package's version from a classic (v1) format
-#                 yarn.lock file.
-# WHY IT EXISTS:  yarn.lock isn't JSON, TOML, or YAML, it's its own
-#                 lightly-structured text format; this hand-rolled block
-#                 splitter/matcher is what makes it readable without a
-#                 dedicated parser dependency.
+# PURPOSE
+#     Resolves a package's version from a classic (v1) format yarn.lock
+#     file. yarn.lock isn't JSON, TOML, or YAML, it's its own
+#     lightly-structured text format; this hand-rolled block
+#     splitter/matcher is what makes it readable without a dedicated
+#     parser dependency.
 #
-# INPUTS:
-#   root (str) - repo root, used to locate yarn.lock.
-#   name (str) - npm package name to resolve.
+# RESPONSIBILITIES
+#     - Split the lockfile into entry blocks.
+#     - Find each block's unindented header line.
+#     - Match the block whose header's comma-separated `name@range`
+#       list includes the target package.
+#     - Extract that block's `version "X.Y.Z"` line.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if not found. Only
-#   classic v1-format yarn.lock is handled; Yarn Berry (v2+) uses a
-#   different syntax entirely and isn't parsed here.
+# PROCESS OVERVIEW
+#     1. Find yarn.lock files under root.
+#     2. Split each file's text on blank lines into entry blocks.
+#     3. Within each block, find the header line: unindented,
+#        non-comment, ending in ":".
+#     4. If that header's comma-separated `name@range` list matches
+#        the target package, search the rest of the block for its
+#        `version "X.Y.Z"` line and return that version.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version_javascript().
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - Only classic v1-format yarn.lock is handled; Yarn Berry (v2+)
+#       uses a different syntax entirely and isn't parsed here.
+#     - A block's header line isn't necessarily its first line, since a
+#       leading "#" comment can share a block with the header it
+#       precedes.
 #
-# EXAMPLE:
-#   # yarn.lock contains:
-#   #   left-pad@^1.0.0:
-#   #     version "1.3.0"
-#   _resolve_version_yarn_lock("/repo", "left-pad") -> "1.3.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root, used to locate yarn.lock.
+#     name (str)
+#         npm package name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if not found.
+#
+# FAILURE CASES
+#     - No yarn.lock, or no matching block found: returns None.
+################################################################################
 def _resolve_version_yarn_lock(root, name):
     """Resolved version from yarn.lock, classic v1 format only (Berry/v2
     lockfiles use a different syntax entirely and aren't handled here).
@@ -1571,11 +2005,11 @@ def _resolve_version_yarn_lock(root, name):
     for lockfile in find_files(root, names={"yarn.lock"}):
         for block in re.split(r"\n\s*\n", read_text(lockfile)):
             lines = block.splitlines()
-            header = next(
-                (line for line in lines
-                 if line.rstrip().endswith(":") and not line.startswith((" ", "\t", "#"))),
-                None,
-            )
+            header = None
+            for line in lines:
+                if line.rstrip().endswith(":") and not line.startswith((" ", "\t", "#")):
+                    header = line
+                    break
             if not header or not header_pattern.search(header):
                 continue
             for line in lines:
@@ -1585,33 +2019,50 @@ def _resolve_version_yarn_lock(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# _resolve_version_pnpm_lock
+################################################################################
+# FUNCTION: _resolve_version_pnpm_lock
 #
-# WHAT IT DOES:   Resolves a package's version from pnpm-lock.yaml's
-#                 "packages:" section.
-# WHY IT EXISTS:  No YAML parser is available in this stdlib-only tool, so
-#                 pnpm's lockfile is read with a regex scan instead,
-#                 handling both its older ("/name@version:") and newer v9
-#                 ("name@version:" or "name@version(peerDep@version):")
-#                 key formats.
+# PURPOSE
+#     Resolves a package's version from pnpm-lock.yaml's "packages:"
+#     section. No YAML parser is available in this stdlib-only tool, so
+#     pnpm's lockfile is read with a regex scan instead, handling both
+#     its older ("/name@version:") and newer v9
+#     ("name@version:" or "name@version(peerDep@version):") key
+#     formats.
 #
-# INPUTS:
-#   root (str) - repo root, used to locate pnpm-lock.yaml.
-#   name (str) - npm package name to resolve.
+# RESPONSIBILITIES
+#     - Find pnpm-lock.yaml files.
+#     - Track when the current line is inside the "packages:" section.
+#     - Match a package key line for the target package, in either the
+#       older or newer key format.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if not found.
+# PROCESS OVERVIEW
+#     1. Find pnpm-lock.yaml files under root.
+#     2. For each one, track whether the current line is inside the
+#        "packages:" section.
+#     3. Inside that section, match each line against the target
+#        package's key pattern, stopping the version capture at the
+#        first "(" or ":".
+#     4. Return the first version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version_javascript().
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - An unindented line inside the "packages:" section means the
+#       next top-level YAML key has been reached, i.e. the "packages:"
+#       section has ended.
 #
-# EXAMPLE:
-#   # pnpm-lock.yaml contains: "  left-pad@1.3.0:"
-#   _resolve_version_pnpm_lock("/repo", "left-pad") -> "1.3.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root, used to locate pnpm-lock.yaml.
+#     name (str)
+#         npm package name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if not found.
+#
+# FAILURE CASES
+#     - No pnpm-lock.yaml, or no matching package key: returns None.
+################################################################################
 def _resolve_version_pnpm_lock(root, name):
     """Resolved version from pnpm-lock.yaml's "packages:" section. No YAML
     parser dependency is available (stdlib-only), so this regex-scans for
@@ -1638,34 +2089,55 @@ def _resolve_version_pnpm_lock(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_python
+################################################################################
+# FUNCTION: resolve_version_python
 #
-# WHAT IT DOES:   Resolves a package's pinned version from a pinned
-#                 requirements.txt/setup.py/setup.cfg entry, or from
-#                 poetry.lock, uv.lock, or Pipfile.lock.
-# WHY IT EXISTS:  Python-specific version resolver for health mode.
+# PURPOSE
+#     Resolves a package's pinned version from a pinned
+#     requirements.txt/setup.py/setup.cfg entry, or from poetry.lock,
+#     uv.lock, or Pipfile.lock, the Python-specific version resolver
+#     for health mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - PyPI package name to resolve, matched case-insensitively.
+# RESPONSIBILITIES
+#     - Check requirements.txt lines for an exact "==" pin.
+#     - Check setup.cfg's and setup.py's install_requires entries for
+#       an exact "==" pin.
+#     - Check poetry.lock/uv.lock's [[package]] blocks for a matching
+#       name.
+#     - Check Pipfile.lock's default/develop sections for a matching
+#       name.
 #
-# RETURNS:
-#   (str or None) - the resolved/pinned version, or None if not found in
-#   any of the checked sources. An unpinned requirements.txt line (e.g.
-#   just "requests" with no "=="), or a version range, won't match, only
-#   an exact "==" pin is read from requirements/setup files.
+# PROCESS OVERVIEW
+#     1. Check every requirements.txt line for an exact "=="-pinned
+#        match on name.
+#     2. Check every setup.cfg's install_requires entries the same way.
+#     3. Check every setup.py's install_requires entries the same way.
+#     4. Check every poetry.lock/uv.lock's [[package]] blocks for a
+#        name match, and return that block's version.
+#     5. Check every Pipfile.lock's default and develop sections for a
+#        name match, and return that entry's version.
+#     6. Return None if none of the above found a match.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_text(), install_requires_from_setup_cfg(),
-#                 install_requires_from_setup_py(), read_json().
+# IMPORTANT DETAILS
+#     - name is matched case-insensitively throughout.
+#     - An unpinned requirements.txt line (e.g. just "requests" with no
+#       "=="), or a version range, won't match; only an exact "=="
+#       pin is read from requirements/setup files.
 #
-# EXAMPLE:
-#   # requirements.txt contains: requests==2.31.0
-#   resolve_version_python("/repo", "requests") -> "2.31.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         PyPI package name to resolve, matched case-insensitively.
+#
+# RETURNS
+#     str or None
+#         The resolved/pinned version, or None if not found in any of
+#         the checked sources.
+#
+# FAILURE CASES
+#     - No pinned entry found in any checked source: returns None.
+################################################################################
 def resolve_version_python(root, name):
     """Resolved version from a pinned requirements.txt/setup.py/setup.cfg
     line, poetry.lock, uv.lock, or Pipfile.lock, tried in that order,
@@ -1705,32 +2177,42 @@ def resolve_version_python(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_go
+################################################################################
+# FUNCTION: resolve_version_go
 #
-# WHAT IT DOES:   Resolves a Go module's pinned version straight from
-#                 go.mod.
-# WHY IT EXISTS:  Go-specific version resolver for health mode. Unlike
-#                 other ecosystems, Go pins the exact version right in the
-#                 manifest itself, so no separate lockfile lookup is
-#                 needed here.
+# PURPOSE
+#     Resolves a Go module's pinned version straight from go.mod, the
+#     Go-specific version resolver for health mode. Unlike other
+#     ecosystems, Go pins the exact version right in the manifest
+#     itself, so no separate lockfile lookup is needed here.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - Go module path to resolve.
+# RESPONSIBILITIES
+#     - Find go.mod files.
+#     - Match the target module's require line and extract its version.
 #
-# RETURNS:
-#   (str or None) - the version string (including its "v" prefix, e.g.
-#   "v1.2.3"), or None if not found in go.mod.
+# PROCESS OVERVIEW
+#     1. Find go.mod files under root.
+#     2. For each line, check whether it matches the target module
+#        name followed by a version.
+#     3. Return the first version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   resolve_version_go("/repo", "github.com/pkg/errors") -> "v0.9.1"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         Go module path to resolve.
+#
+# RETURNS
+#     str or None
+#         The version string (including its "v" prefix, e.g.
+#         "v1.2.3"), or None if not found in go.mod.
+#
+# FAILURE CASES
+#     - No go.mod, or no matching require line: returns None.
+################################################################################
 def resolve_version_go(root, name):
     """Resolved version straight from go.mod's require line, Go pins the
     version right there, no separate lockfile lookup needed."""
@@ -1742,29 +2224,42 @@ def resolve_version_go(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_rust
+################################################################################
+# FUNCTION: resolve_version_rust
 #
-# WHAT IT DOES:   Resolves a crate's pinned version from the matching
-#                 [[package]] block in Cargo.lock.
-# WHY IT EXISTS:  Rust-specific version resolver for health mode.
+# PURPOSE
+#     Resolves a crate's pinned version from the matching [[package]]
+#     block in Cargo.lock, the Rust-specific version resolver for
+#     health mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - crate name to resolve, matched case-sensitively (crates.io
-#     names are effectively case-sensitive-normalized already).
+# RESPONSIBILITIES
+#     - Find Cargo.lock files.
+#     - Split each one into [[package]] blocks.
+#     - Match the block whose name field equals the target crate name.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if not found.
+# PROCESS OVERVIEW
+#     1. Find Cargo.lock files under root.
+#     2. Split each file's text into [[package]] blocks.
+#     3. For each block, extract its name and version fields.
+#     4. Return the version of the first block whose name matches.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - name is matched case-sensitively; crates.io names are
+#       effectively case-sensitive-normalized already.
 #
-# EXAMPLE:
-#   resolve_version_rust("/repo", "serde") -> "1.0.195"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         Crate name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if not found.
+#
+# FAILURE CASES
+#     - No Cargo.lock, or no matching block: returns None.
+################################################################################
 def resolve_version_rust(root, name):
     """Resolved version from the matching [[package]] block in Cargo.lock."""
     for lockfile in find_files(root, names={"Cargo.lock"}):
@@ -1777,29 +2272,40 @@ def resolve_version_rust(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_ruby
+################################################################################
+# FUNCTION: resolve_version_ruby
 #
-# WHAT IT DOES:   Resolves a gem's pinned version from Gemfile.lock's
-#                 specs: block.
-# WHY IT EXISTS:  Ruby-specific version resolver for health mode.
+# PURPOSE
+#     Resolves a gem's pinned version from Gemfile.lock's specs: block,
+#     the Ruby-specific version resolver for health mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - gem name to resolve.
+# RESPONSIBILITIES
+#     - Find Gemfile.lock files.
+#     - Match the target gem's 4-space-indented specs: line and extract
+#       its version.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if not found.
+# PROCESS OVERVIEW
+#     1. Find Gemfile.lock files under root.
+#     2. Search each one for a 4-space-indented line naming the target
+#        gem, followed by its version in parentheses.
+#     3. Return the first version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   # Gemfile.lock contains: "    rails (7.0.0)"
-#   resolve_version_ruby("/repo", "rails") -> "7.0.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         Gem name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if not found.
+#
+# FAILURE CASES
+#     - No Gemfile.lock, or no matching line: returns None.
+################################################################################
 def resolve_version_ruby(root, name):
     """Resolved version from the gem's line in Gemfile.lock's specs:
     block, e.g. "    rails (7.0.0)"."""
@@ -1810,65 +2316,100 @@ def resolve_version_ruby(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_php
+################################################################################
+# FUNCTION: resolve_version_php
 #
-# WHAT IT DOES:   Resolves a package's pinned version from composer.lock.
-# WHY IT EXISTS:  PHP-specific version resolver for health mode.
+# PURPOSE
+#     Resolves a package's pinned version from composer.lock, the
+#     PHP-specific version resolver for health mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - "vendor/package" name to resolve.
+# RESPONSIBILITIES
+#     - Find composer.lock files.
+#     - Search both the packages and packages-dev arrays for a
+#       matching entry.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if not found in either
-#   the packages or packages-dev array.
+# PROCESS OVERVIEW
+#     1. Find composer.lock files under root.
+#     2. Parse each one as JSON.
+#     3. Search its packages and packages-dev arrays for an entry
+#        whose name matches and that has a version.
+#     4. Return the first matching version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_json().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   resolve_version_php("/repo", "monolog/monolog") -> "2.9.1"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         "vendor/package" name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if not found in either the
+#         packages or packages-dev array.
+#
+# FAILURE CASES
+#     - No composer.lock, or no matching entry: returns None.
+################################################################################
 def resolve_version_php(root, name):
     """Resolved version from the matching entry in composer.lock's
     packages/packages-dev arrays."""
     for lockfile in find_files(root, names={"composer.lock"}):
-        lock_data = read_json(lockfile)
-        if not isinstance(lock_data, dict):
+        composer_lock_contents = read_json(lockfile)
+        if not isinstance(composer_lock_contents, dict):
             continue
         for section in ("packages", "packages-dev"):
-            for package_entry in (lock_data.get(section) or []):
+            for package_entry in (composer_lock_contents.get(section) or []):
                 if isinstance(package_entry, dict) and package_entry.get("name") == name \
                         and package_entry.get("version"):
                     return package_entry["version"]
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_dart
+# pubspec.lock blocks are short in practice; this is a practical cap on
+# how far to look ahead for a package's version: line, not a spec-defined
+# limit.
+PUBSPEC_LOCK_VERSION_LOOKAHEAD_LINES = 8
+
+################################################################################
+# FUNCTION: resolve_version_dart
 #
-# WHAT IT DOES:   Resolves a package's pinned version from its block in
-#                 pubspec.lock.
-# WHY IT EXISTS:  Dart-specific version resolver for health mode.
+# PURPOSE
+#     Resolves a package's pinned version from its block in
+#     pubspec.lock, the Dart-specific version resolver for health mode.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - package name to resolve.
+# RESPONSIBILITIES
+#     - Find pubspec.lock files.
+#     - Locate the target package's block by its unindented name line.
+#     - Look ahead within that block for its version line.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if not found.
+# PROCESS OVERVIEW
+#     1. Find pubspec.lock files under root.
+#     2. For each line, check whether it is the target package's
+#        2-space-indented name line.
+#     3. If so, look ahead up to PUBSPEC_LOCK_VERSION_LOOKAHEAD_LINES
+#        lines for a "version:" line, stopping early if the next
+#        top-level entry is reached first.
+#     4. Return the first version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - The version line lives a few lines below the package name,
+#       inside its block, not on the name line itself.
 #
-# EXAMPLE:
-#   resolve_version_dart("/repo", "http") -> "1.2.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         Package name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if not found.
+#
+# FAILURE CASES
+#     - No pubspec.lock, or no matching block: returns None.
+################################################################################
 def resolve_version_dart(root, name):
     """Resolved version from the package's block in pubspec.lock."""
     for lockfile in find_files(root, names={"pubspec.lock"}):
@@ -1877,9 +2418,8 @@ def resolve_version_dart(root, name):
             if re.match(r"^  " + re.escape(name) + r":\s*$", line):
                 # Version lives a few lines below the package name, inside
                 # its block; stop looking once we hit the next top-level entry.
-                # 8-line lookahead is a practical cap (pubspec.lock blocks
-                # are short), not a spec-defined limit.
-                for lookahead_index in range(line_index + 1, min(line_index + 8, len(lines))):
+                lookahead_end_index = min(line_index + PUBSPEC_LOCK_VERSION_LOOKAHEAD_LINES, len(lines))
+                for lookahead_index in range(line_index + 1, lookahead_end_index):
                     match = re.match(r'^\s+version:\s*"([^"]+)"', lines[lookahead_index])
                     if match:
                         return match.group(1)
@@ -1888,34 +2428,53 @@ def resolve_version_dart(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_java
+################################################################################
+# FUNCTION: resolve_version_java
 #
-# WHAT IT DOES:   Resolves a "group:artifact" pair's version from pom.xml,
-#                 build.gradle(.kts), or ivy.xml.
-# WHY IT EXISTS:  Java-specific version resolver for health mode. Unlike
-#                 most ecosystems, this reads a *declared* version
-#                 straight from the manifest (Maven/Gradle/Ivy all pin the
-#                 version at the declaration site itself), it isn't a
-#                 lockfile lookup, none of these three formats has one.
+# PURPOSE
+#     Resolves a "group:artifact" pair's version from pom.xml,
+#     build.gradle(.kts), or ivy.xml, the Java-specific version
+#     resolver for health mode. Unlike most ecosystems, this reads a
+#     declared version straight from the manifest (Maven/Gradle/Ivy
+#     all pin the version at the declaration site itself); it isn't a
+#     lockfile lookup, since none of these three formats has one.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   group_artifact (str) - "groupId:artifactId" pair to resolve.
+# RESPONSIBILITIES
+#     - Split group_artifact into its groupId and artifactId.
+#     - Check pom.xml's matching <dependency> tag for a <version>.
+#     - Check build.gradle/build.gradle.kts's matching dependency
+#       string for a version segment.
+#     - Check ivy.xml's matching <dependency> tag for a rev attribute.
 #
-# RETURNS:
-#   (str or None) - the declared version, or None if not found or if the
-#   version isn't a literal (e.g. a Gradle version catalog reference).
+# PROCESS OVERVIEW
+#     1. Split group_artifact into groupId and artifactId.
+#     2. Search pom.xml files for a <dependency> tag with matching
+#        <groupId>/<artifactId> and an explicit <version>.
+#     3. Search build.gradle/build.gradle.kts files for a
+#        "group:artifact:version" string matching groupId and
+#        artifactId.
+#     4. Search ivy.xml files for a <dependency> tag with matching
+#        org/name attributes and a rev attribute.
+#     5. Return the first version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - Returns None if the version isn't a literal (e.g. a Gradle
+#       version catalog reference), since only literal version strings
+#       are matched by these regexes.
 #
-# EXAMPLE:
-#   resolve_version_java("/repo", "org.springframework:spring-core")
-#   -> "6.1.2"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     group_artifact (str)
+#         "groupId:artifactId" pair to resolve.
+#
+# RETURNS
+#     str or None
+#         The declared version, or None if not found.
+#
+# FAILURE CASES
+#     - No matching manifest entry found: returns None.
+################################################################################
 def resolve_version_java(root, group_artifact):
     """Resolved/declared version for a "group:artifact" pair, from an
     explicit <version> tag in pom.xml, the version segment of a Gradle
@@ -1947,30 +2506,45 @@ def resolve_version_java(root, group_artifact):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_dotnet
+################################################################################
+# FUNCTION: resolve_version_dotnet
 #
-# WHAT IT DOES:   Resolves a NuGet package's version from a .csproj's
-#                 <PackageReference> Version attribute, or from
-#                 paket.lock.
-# WHY IT EXISTS:  .NET-specific version resolver for health mode, covering
-#                 both the built-in NuGet CLI convention and Paket.
+# PURPOSE
+#     Resolves a NuGet package's version from a .csproj's
+#     <PackageReference> Version attribute, or from paket.lock, the
+#     .NET-specific version resolver for health mode, covering both
+#     the built-in NuGet CLI convention and Paket.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - package id to resolve.
+# RESPONSIBILITIES
+#     - Check every .csproj's matching <PackageReference> tag for a
+#       Version attribute.
+#     - Check every paket.lock's matching entry for a version.
 #
-# RETURNS:
-#   (str or None) - the declared/resolved version, or None if not found.
+# PROCESS OVERVIEW
+#     1. Search .csproj files for a <PackageReference Include="name"
+#        Version="..."> tag.
+#     2. If found, return its version.
+#     3. Otherwise, search paket.lock files for the package's
+#        4-space-indented "Name (Version)" entry.
+#     4. Return the first version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - paket.lock uses the same 4-space-indent convention as
+#       resolve_version_ruby's Gemfile.lock lookup.
 #
-# EXAMPLE:
-#   resolve_version_dotnet("/repo", "Newtonsoft.Json") -> "13.0.3"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         Package id to resolve.
+#
+# RETURNS
+#     str or None
+#         The declared/resolved version, or None if not found.
+#
+# FAILURE CASES
+#     - No matching .csproj or paket.lock entry: returns None.
+################################################################################
 def resolve_version_dotnet(root, name):
     """Declared version from the matching <PackageReference>'s Version
     attribute in a .csproj file, or the resolved version from paket.lock's
@@ -1989,34 +2563,53 @@ def resolve_version_dotnet(root, name):
     return None
 
 
-# ------------------------------------------------------------------------
-# resolve_version_cpp
+################################################################################
+# FUNCTION: resolve_version_cpp
 #
-# WHAT IT DOES:   Resolves a Conan package's version from conan.lock or,
-#                 failing that, a pinned version in conanfile.txt.
-# WHY IT EXISTS:  C/C++-specific version resolver for health mode. vcpkg
-#                 has no per-package pinned version to resolve (see
-#                 RETURNS below), so this only ever finds a version for
-#                 Conan-managed packages.
+# PURPOSE
+#     Resolves a Conan package's version from conan.lock or, failing
+#     that, a pinned version in conanfile.txt, the C/C++-specific
+#     version resolver for health mode. vcpkg has no per-package
+#     pinned version to resolve (see FAILURE CASES), so this only ever
+#     finds a version for Conan-managed packages.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   name (str) - Conan package name to resolve.
+# RESPONSIBILITIES
+#     - Check conan.lock's requires/build_requires/tool_requires lists
+#       for a matching package reference.
+#     - Check conanfile.txt's [requires] line for a matching pinned
+#       version if conan.lock had no match.
 #
-# RETURNS:
-#   (str or None) - the resolved/pinned version, or None if not found, or
-#   if the project only uses vcpkg (vcpkg pins the whole dependency set
-#   via a single builtin-baseline commit in vcpkg.json, not a per-package
-#   version, so there's genuinely nothing to resolve there).
+# PROCESS OVERVIEW
+#     1. Search conan.lock's requires, build_requires, and
+#        tool_requires lists for a "name/version#rev%ts" reference
+#        string whose name matches.
+#     2. If found, strip the "#rev" and "%ts" suffixes and return the
+#        version.
+#     3. Otherwise, search conanfile.txt for the target package's
+#        pinned "name/version" line.
+#     4. Return the first version found.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      resolve_version() via the RESOLVE_VERSION dispatch table.
-# CALLS:          find_files(), read_json(), read_text().
+# IMPORTANT DETAILS
+#     - The conan.lock format handled here is the Conan 2.x lockfile
+#       shape only.
 #
-# EXAMPLE:
-#   resolve_version_cpp("/repo", "fmt") -> "10.1.1"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     name (str)
+#         Conan package name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved/pinned version, or None if not found.
+#
+# FAILURE CASES
+#     - No matching conan.lock or conanfile.txt entry: returns None.
+#     - Project only uses vcpkg: returns None, since vcpkg pins the
+#       whole dependency set via a single builtin-baseline commit in
+#       vcpkg.json, not a per-package version, so there's genuinely
+#       nothing to resolve there.
+################################################################################
 def resolve_version_cpp(root, name):
     """Resolved version from conan.lock's requires list ("name/version#rev%ts"
     reference strings, Conan 2.x lockfile shape only), or the version
@@ -2025,10 +2618,10 @@ def resolve_version_cpp(root, name):
     builtin-baseline in vcpkg.json, not a per-package version, so there's
     honestly nothing to resolve there."""
     for lockfile in find_files(root, names={"conan.lock"}):
-        data = read_json(lockfile)
-        if isinstance(data, dict):
+        conan_lock_contents = read_json(lockfile)
+        if isinstance(conan_lock_contents, dict):
             for key in ("requires", "build_requires", "tool_requires"):
-                for ref in (data.get(key) or []):
+                for ref in (conan_lock_contents.get(key) or []):
                     if isinstance(ref, str) and ref.split("/", 1)[0] == name:
                         version = ref.split("/", 1)[1].split("#")[0].split("%")[0]
                         if version:
@@ -2049,33 +2642,49 @@ RESOLVE_VERSION = {
 }
 
 
-# ------------------------------------------------------------------------
-# resolve_version
+################################################################################
+# FUNCTION: resolve_version
 #
-# WHAT IT DOES:   Looks up and calls the right resolve_version_* function
-#                 for a given ecosystem.
-# WHY IT EXISTS:  Gives run_health() one call to make instead of a long
-#                 if/elif chain over every ecosystem.
+# PURPOSE
+#     Looks up and calls the right resolve_version_* function for a
+#     given ecosystem, so run_health() has one call to make instead of
+#     a long if/elif chain over every ecosystem.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   ecosystem (str) - which ecosystem's resolver to use.
-#   name (str) - package/module name to resolve.
+# RESPONSIBILITIES
+#     - Look up the ecosystem's resolver in RESOLVE_VERSION.
+#     - Call it, catching any parse-related failure.
 #
-# RETURNS:
-#   (str or None) - the resolved version, or None if ecosystem has no
-#   registered resolver, or if the resolver itself found nothing, or
-#   raised an OSError/re.error while trying.
+# PROCESS OVERVIEW
+#     1. Look up ecosystem's resolver function in RESOLVE_VERSION.
+#     2. If there is no registered resolver for this ecosystem, return
+#        None.
+#     3. Call the resolver with root and name.
+#     4. If the resolver raises OSError or re.error, return None
+#        instead of propagating.
+#     5. Return the resolver's result.
 #
-# RAISES/ERRORS:  Never raises; OSError and re.error from the underlying
-#                 resolver are both caught and turned into None.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      run_health().
-# CALLS:          The matching function in RESOLVE_VERSION.
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   resolve_version("/repo", "python", "requests") -> "2.31.0"
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     ecosystem (str)
+#         Which ecosystem's resolver to use.
+#     name (str)
+#         Package/module name to resolve.
+#
+# RETURNS
+#     str or None
+#         The resolved version, or None if ecosystem has no registered
+#         resolver, or if the resolver itself found nothing, or raised
+#         an OSError/re.error while trying.
+#
+# FAILURE CASES
+#     - Ecosystem has no registered resolver: returns None.
+#     - Resolver raises OSError or re.error: returns None instead of
+#       propagating.
+################################################################################
 def resolve_version(root, ecosystem, name):
     """Dispatches to the right resolve_version_* function for ecosystem.
     Returns None for an unsupported ecosystem or any parse failure."""
@@ -2091,48 +2700,70 @@ def resolve_version(root, ecosystem, name):
 # ===== HEALTH MODE: LIVE REGISTRY LOOKUPS =====
 # --- health mode: live registry lookups ---------------------------------
 
-# ------------------------------------------------------------------------
-# http_json
+# 10s is long enough for a normal registry response, short enough that
+# one slow package doesn't stall a whole health-mode batch.
+HTTP_DEFAULT_TIMEOUT_SECONDS = 10
+
+################################################################################
+# FUNCTION: http_json
 #
-# WHAT IT DOES:   Makes an HTTP request and parses the JSON response,
-#                 without depending on the third-party `requests` library.
-# WHY IT EXISTS:  This is the one place every registry call in health mode
-#                 goes through, so timeout/error handling, the User-Agent
-#                 header, and the "404 means confirmed absence" distinction
-#                 are all consistent no matter which registry is being
-#                 queried.
+# PURPOSE
+#     Makes an HTTP request and parses the JSON response, without
+#     depending on the third-party `requests` library. This is the one
+#     place every registry call in health mode goes through, so
+#     timeout/error handling, the User-Agent header, and the "404
+#     means confirmed absence" distinction are all consistent no
+#     matter which registry is being queried.
 #
-# INPUTS:
-#   url (str) - full URL to request.
-#   method (str) - HTTP method, "GET" or "POST".
-#   data (dict or None) - if given, JSON-encoded and sent as the request
-#     body (used for OSV.dev's POST query).
-#   headers (dict or None) - extra headers to merge in on top of the
-#     default User-Agent/Accept.
-#   timeout (int) - seconds to wait before giving up. 10s default: long
-#     enough for a normal registry response, short enough that one slow
-#     package doesn't stall a whole health-mode batch.
+# RESPONSIBILITIES
+#     - Build the request with a consistent User-Agent/Accept header,
+#       merging in any extra headers.
+#     - JSON-encode the request body, if given.
+#     - Make the request and parse its JSON response.
+#     - Distinguish a confirmed HTTP 404 from every other failure mode.
 #
-# RETURNS:
-#   (tuple[Any or None, bool]) - (data, not_found). data is the parsed
-#   JSON body, or None on any failure (network error, timeout, bad JSON,
-#   any non-2xx/404 status). not_found is True only for a confirmed HTTP
-#   404 (package genuinely doesn't exist, or a typo), so callers can tell
-#   "definitely absent" apart from "network hiccup, genuinely unknown."
+# PROCESS OVERVIEW
+#     1. Build the request headers, starting from the default
+#        User-Agent/Accept pair and merging in any extra headers.
+#     2. If data was given, JSON-encode it as the request body and add
+#        a Content-Type header.
+#     3. Send the request.
+#     4. On success, parse and return the JSON response body.
+#     5. On an HTTP error, return None and whether the status was 404.
+#     6. On a network error, timeout, or invalid JSON, return None and
+#        False.
 #
-# RAISES/ERRORS:  Never raises; HTTPError, URLError, ValueError (bad
-#                 JSON), and TimeoutError are all caught.
-# SIDE EFFECTS:   Makes an outbound network request.
-# CALLED BY:      check_osv() and every health_* function.
-# CALLS:          urllib.request.urlopen().
+# IMPORTANT DETAILS
+#     - not_found is True only for a confirmed HTTP 404 (package
+#       genuinely doesn't exist, or a typo), so callers can tell
+#       "definitely absent" apart from "network hiccup, genuinely
+#       unknown."
 #
-# EXAMPLE:
-#   http_json("https://registry.npmjs.org/left-pad")
-#   -> ({"name": "left-pad", ...}, False)
-#   http_json("https://registry.npmjs.org/definitely-not-a-real-package")
-#   -> (None, True)
-#--------------------------------------------------------------------------
-def http_json(url, method="GET", data=None, headers=None, timeout=10):
+# PARAMETERS
+#     url (str)
+#         Full URL to request.
+#     method (str)
+#         HTTP method, "GET" or "POST".
+#     data (dict or None)
+#         If given, JSON-encoded and sent as the request body (used
+#         for OSV.dev's POST query).
+#     headers (dict or None)
+#         Extra headers to merge in on top of the default
+#         User-Agent/Accept.
+#     timeout (int)
+#         Seconds to wait before giving up.
+#
+# RETURNS
+#     tuple[Any or None, bool]
+#         (data, not_found). data is the parsed JSON body, or None on
+#         any failure. not_found is True only for a confirmed HTTP 404.
+#
+# FAILURE CASES
+#     - Network error, timeout, or invalid JSON: returns (None, False).
+#     - HTTP error: returns (None, True) if the status was 404, else
+#       (None, False).
+################################################################################
+def http_json(url, method="GET", data=None, headers=None, timeout=HTTP_DEFAULT_TIMEOUT_SECONDS):
     """Stdlib-only HTTP JSON helper, no `requests` dependency. Returns
     (data, not_found): data is None on any failure, every caller in this
     file treats that as "field unavailable," not a crash. not_found is
@@ -2165,47 +2796,61 @@ OSV_ECOSYSTEM = {
 }
 
 
-# ------------------------------------------------------------------------
-# check_osv
+################################################################################
+# FUNCTION: check_osv
 #
-# WHAT IT DOES:   Queries OSV.dev (Open Source Vulnerabilities, a
-#                 cross-ecosystem public vulnerability database) for known
-#                 vulnerabilities affecting a package.
-# WHY IT EXISTS:  This is the one live vulnerability signal available for
-#                 every ecosystem this tool supports, including ones
-#                 (like C/C++) whose own package registries expose no
-#                 health metadata at all.
+# PURPOSE
+#     Queries OSV.dev (Open Source Vulnerabilities, a cross-ecosystem
+#     public vulnerability database) for known vulnerabilities
+#     affecting a package. This is the one live vulnerability signal
+#     available for every ecosystem this tool supports, including ones
+#     (like C/C++) whose own package registries expose no health
+#     metadata at all.
 #
-# INPUTS:
-#   ecosystem (str) - this repo's ecosystem key, translated internally to
-#     OSV's own name via OSV_ECOSYSTEM.
-#   name (str) - package name to check.
-#   version (str or None) - the pinned version to scope the query to. If
-#     omitted, OSV returns every vulnerability ever reported for the
-#     package across all versions, not just ones affecting what's
-#     installed, see the version_scoped field below.
+# RESPONSIBILITIES
+#     - Translate this repo's ecosystem key to OSV's own ecosystem
+#       name.
+#     - Build and send the OSV.dev query, scoped to a version when one
+#       is given.
+#     - Report whether the query was version-scoped, so callers can
+#       tell a confirmed hit from an unscoped one.
 #
-# RETURNS:
-#   (dict) - {"status": "ok"|"unknown"|"unavailable", "vulnerabilities":
-#   [vuln_id, ...], "version_scoped": bool}. "unavailable" means this
-#   ecosystem has no OSV mapping; "unknown" means the request itself
-#   failed (network/timeout); "ok" means OSV answered, though the
-#   vulnerabilities list can still be empty (queried successfully, found
-#   nothing). version_scoped is True only when a version was supplied,
-#   callers (see health_tier()) must not treat an unscoped hit as
-#   confirming the *installed* version is vulnerable.
+# PROCESS OVERVIEW
+#     1. Translate ecosystem to OSV's own ecosystem name.
+#     2. If there's no OSV mapping for this ecosystem, return an
+#        "unavailable" result immediately.
+#     3. Build the query, including a version field only if version
+#        was given.
+#     4. Send the query to OSV.dev.
+#     5. If the request failed, return an "unknown" result.
+#     6. Otherwise, collect every returned vulnerability's id and
+#        return an "ok" result.
 #
-# RAISES/ERRORS:  None expected; http_json() absorbs network failures.
-# SIDE EFFECTS:   Makes an outbound network request (unless the ecosystem
-#                 has no OSV mapping, in which case no request is made).
-# CALLED BY:      run_health().
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - version_scoped is True only when a version was supplied.
+#       Callers (see health_tier()) must not treat an unscoped hit as
+#       confirming the installed version is vulnerable, since without
+#       a version OSV returns every vulnerability ever reported for
+#       the package across all versions.
 #
-# EXAMPLE:
-#   check_osv("python", "django", "1.11.0")
-#   -> {"status": "ok", "vulnerabilities": ["GHSA-xxxx-...", ...],
-#       "version_scoped": True}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     ecosystem (str)
+#         This repo's ecosystem key, translated internally to OSV's
+#         own name via OSV_ECOSYSTEM.
+#     name (str)
+#         Package name to check.
+#     version (str or None)
+#         The pinned version to scope the query to.
+#
+# RETURNS
+#     dict
+#         {"status": "ok"|"unknown"|"unavailable", "vulnerabilities":
+#         [vuln_id, ...], "version_scoped": bool}.
+#
+# FAILURE CASES
+#     - Ecosystem has no OSV mapping: returns status "unavailable".
+#     - Request fails (network/timeout): returns status "unknown".
+################################################################################
 def check_osv(ecosystem, name, version=None):
     """Queries OSV.dev for known vulnerabilities. Without a version, OSV
     returns the package's entire historical advisory list, not just ones
@@ -2215,45 +2860,66 @@ def check_osv(ecosystem, name, version=None):
     osv_ecosystem = OSV_ECOSYSTEM.get(ecosystem)
     if not osv_ecosystem:
         return {"status": "unavailable", "vulnerabilities": [], "version_scoped": False}
+
     package = {"name": name, "ecosystem": osv_ecosystem}
-    query = {"version": version, "package": package} if version else {"package": package}
+    if version:
+        query = {"version": version, "package": package}
+    else:
+        query = {"package": package}
+
     response_data, _not_found = http_json("https://api.osv.dev/v1/query", method="POST", data=query)
     if response_data is None:
         return {"status": "unknown", "vulnerabilities": [], "version_scoped": bool(version)}
-    vulnerability_ids = [v.get("id") for v in (response_data.get("vulns") or [])]
+
+    vulnerability_ids = []
+    for vulnerability_entry in (response_data.get("vulns") or []):
+        vulnerability_ids.append(vulnerability_entry.get("id"))
     return {"status": "ok", "vulnerabilities": vulnerability_ids, "version_scoped": bool(version)}
 
 
-# ------------------------------------------------------------------------
-# health_javascript
+################################################################################
+# FUNCTION: health_javascript
 #
-# WHAT IT DOES:   Fetches an npm package's latest publish time, maintainer
-#                 count, deprecation message, and last-month download
-#                 count.
-# WHY IT EXISTS:  npm-specific registry health fetcher for health mode.
+# PURPOSE
+#     Fetches an npm package's latest publish time, maintainer count,
+#     deprecation message, and last-month download count, the
+#     npm-specific registry health fetcher for health mode.
 #
-# INPUTS:
-#   name (str) - npm package name.
+# RESPONSIBILITIES
+#     - Fetch the package's registry metadata.
+#     - Fetch its last-month download count.
+#     - Extract recency, maintainer count, and deprecation message
+#       from the registry metadata.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": int or
-#   None, "downloads": int or None, "deprecated": str or None,
-#   "registry_status": "ok"|"not_found"|"failed"}. A maintainer-set
-#   `deprecated` message on the latest version is a stronger abandonment
-#   signal than anything inferred from recency/maintainers/downloads
-#   alone, see health_tier().
+# PROCESS OVERVIEW
+#     1. Request the package's registry metadata.
+#     2. Request its last-month download count.
+#     3. If the registry metadata request failed, return a result with
+#        every field empty and the appropriate registry_status.
+#     4. Otherwise, extract the latest version's publish time,
+#        maintainer count, and deprecation message from the metadata,
+#        plus the download count from the downloads request.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes two outbound network requests (registry metadata,
-#                 download stats).
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - A maintainer-set `deprecated` message on the latest version is
+#       a stronger abandonment signal than anything inferred from
+#       recency/maintainers/downloads alone; see health_tier().
 #
-# EXAMPLE:
-#   health_javascript("left-pad")
-#   -> {"recency": "2016-03-25T...", "maintainers": 1, "downloads": 2000000,
-#       "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     name (str)
+#         npm package name.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": int or
+#         None, "downloads": int or None, "deprecated": str or None,
+#         "registry_status": "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - Registry metadata request fails: registry_status is
+#       "not_found" (confirmed HTTP 404) or "failed" (any other
+#       failure), and every other field is None.
+################################################################################
 def health_javascript(name):
     """Latest publish time, maintainer count, and declared-deprecation
     message (if any) from the npm registry metadata endpoint, plus
@@ -2263,9 +2929,13 @@ def health_javascript(name):
     registry_data, not_found = http_json(f"https://registry.npmjs.org/{name}")
     downloads_data, _ = http_json(f"https://api.npmjs.org/downloads/point/last-month/{name}")
     if registry_data is None:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": None, "downloads": None, "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     latest_version = (registry_data.get("dist-tags") or {}).get("latest")
     publish_times = registry_data.get("time") or {}
@@ -2279,35 +2949,56 @@ def health_javascript(name):
     }
 
 
-# ------------------------------------------------------------------------
-# health_python
+################################################################################
+# FUNCTION: health_python
 #
-# WHAT IT DOES:   Fetches a PyPI package's latest release upload time,
-#                 yanked/deprecation status, and last-month download count.
-# WHY IT EXISTS:  Python-specific registry health fetcher for health mode.
+# PURPOSE
+#     Fetches a PyPI package's latest release upload time,
+#     yanked/deprecation status, and last-month download count, the
+#     Python-specific registry health fetcher for health mode.
 #
-# INPUTS:
-#   name (str) - PyPI package name.
+# RESPONSIBILITIES
+#     - Fetch the package's PyPI JSON API metadata.
+#     - Determine the latest version's upload time.
+#     - Determine whether the latest version's files are all yanked.
+#     - Fetch its last-month download count from pypistats.org.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": "n/a"
-#   (PyPI's API exposes no maintainer count), "downloads": int or None,
-#   "deprecated": str or None, "registry_status": "ok"|"not_found"|
-#   "failed"}. "deprecated" is set when every distribution file for the
-#   latest version is marked "yanked" on PyPI, that's PyPI's own
-#   deprecation signal, surfaced the same way as npm's `deprecated` field.
+# PROCESS OVERVIEW
+#     1. Request the package's PyPI JSON API metadata.
+#     2. If that request failed, return a result with every field
+#        empty and the appropriate registry_status.
+#     3. Otherwise, find the latest version's release files and read
+#        the first one's upload time.
+#     4. If every release file for the latest version is marked
+#        "yanked", treat that as a deprecation signal.
+#     5. Request the package's last-month download count from
+#        pypistats.org.
+#     6. Return the combined result.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes two outbound network requests (PyPI JSON API,
-#                 pypistats.org for downloads).
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - "deprecated" is set when every distribution file for the
+#       latest version is marked "yanked" on PyPI; that's PyPI's own
+#       deprecation signal, surfaced the same way as npm's
+#       `deprecated` field.
+#     - PyPI's own API stopped exposing download counts years ago;
+#       pypistats.org is a third-party service that fills that gap,
+#       best-effort.
 #
-# EXAMPLE:
-#   health_python("requests")
-#   -> {"recency": "2023-05-22T...", "maintainers": "n/a",
-#       "downloads": 50000000, "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     name (str)
+#         PyPI package name.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": "n/a",
+#         "downloads": int or None, "deprecated": str or None,
+#         "registry_status": "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - PyPI JSON API request fails: registry_status is "not_found"
+#       (confirmed HTTP 404) or "failed" (any other failure), and
+#       every other field is None.
+################################################################################
 def health_python(name):
     """Latest release upload time from PyPI's JSON API (no maintainer
     count, PyPI's API doesn't expose one), plus last-month downloads from
@@ -2316,9 +3007,13 @@ def health_python(name):
     same way as npm's `deprecated` field."""
     registry_data, not_found = http_json(f"https://pypi.org/pypi/{name}/json")
     if registry_data is None:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": None, "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     releases = registry_data.get("releases") or {}
     latest_version = (registry_data.get("info") or {}).get("version")
@@ -2342,34 +3037,51 @@ def health_python(name):
     }
 
 
-# ------------------------------------------------------------------------
-# health_go
+################################################################################
+# FUNCTION: health_go
 #
-# WHAT IT DOES:   Fetches a Go module's latest version publish time from
-#                 Go's official module proxy.
-# WHY IT EXISTS:  Go-specific registry health fetcher for health mode. Go
-#                 modules have no concept of maintainer count, download
-#                 volume, or a deprecation flag, so this reports far less
-#                 than most other ecosystems' health_* functions.
+# PURPOSE
+#     Fetches a Go module's latest version publish time from Go's
+#     official module proxy, the Go-specific registry health fetcher
+#     for health mode. Go modules have no concept of maintainer count,
+#     download volume, or a deprecation flag, so this reports far less
+#     than most other ecosystems' health_* functions.
 #
-# INPUTS:
-#   name (str) - Go module path.
+# RESPONSIBILITIES
+#     - Lowercase the module path, as the Go module proxy requires.
+#     - Fetch the module's latest version metadata.
+#     - Extract its publish time.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": "n/a",
-#   "downloads": "n/a", "deprecated": None, "registry_status":
-#   "ok"|"not_found"|"failed"}.
+# PROCESS OVERVIEW
+#     1. Lowercase the module path.
+#     2. Request the module's latest version metadata from the Go
+#        module proxy.
+#     3. If that request failed, return a result with recency empty
+#        and the appropriate registry_status.
+#     4. Otherwise, return the publish time from the response.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes one outbound network request.
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - The Go module proxy requires the module path to be lowercased.
+#       "Case encoding" for modules with uppercase letters is a
+#       separate, more complex scheme not implemented here; this
+#       simple .lower() is correct for the overwhelming majority of
+#       real-world module paths.
 #
-# EXAMPLE:
-#   health_go("github.com/pkg/errors")
-#   -> {"recency": "2020-01-14T...", "maintainers": "n/a",
-#       "downloads": "n/a", "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     name (str)
+#         Go module path.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": "n/a",
+#         "downloads": "n/a", "deprecated": None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - Module proxy request fails: registry_status is "not_found"
+#       (confirmed HTTP 404) or "failed" (any other failure), and
+#       recency is None.
+################################################################################
 def health_go(name):
     """Latest version's publish time from Go's official module proxy.
     No maintainer count or download volume, neither concept exists for
@@ -2381,9 +3093,13 @@ def health_go(name):
     module_path = name.lower()
     registry_data, not_found = http_json(f"https://proxy.golang.org/{module_path}/@latest")
     if registry_data is None:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     return {
         "recency": registry_data.get("Time"), "maintainers": "n/a", "downloads": "n/a",
@@ -2391,45 +3107,67 @@ def health_go(name):
     }
 
 
-# ------------------------------------------------------------------------
-# health_rust
+################################################################################
+# FUNCTION: health_rust
 #
-# WHAT IT DOES:   Fetches a crate's last-updated time, download count, and
-#                 owner count from crates.io.
-# WHY IT EXISTS:  Rust-specific registry health fetcher for health mode.
+# PURPOSE
+#     Fetches a crate's last-updated time, download count, and owner
+#     count from crates.io, the Rust-specific registry health fetcher
+#     for health mode.
 #
-# INPUTS:
-#   name (str) - crate name.
+# RESPONSIBILITIES
+#     - Fetch the crate's metadata.
+#     - Fetch its owner list.
+#     - Extract last-updated time, download count, and owner count.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": int or
-#   None, "downloads": int or None, "deprecated": None (crates.io exposes
-#   no deprecation flag), "registry_status": "ok"|"not_found"|"failed"}.
+# PROCESS OVERVIEW
+#     1. Request the crate's metadata.
+#     2. If that request failed, return a result with every field
+#        empty and the appropriate registry_status.
+#     3. Otherwise, request the crate's owners.
+#     4. Return the combined result: last-updated time and download
+#        count from the metadata, owner count from the owners
+#        response.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes two outbound network requests (crate metadata,
-#                 owners).
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - crates.io exposes no deprecation flag, so "deprecated" is
+#       always None here.
 #
-# EXAMPLE:
-#   health_rust("serde")
-#   -> {"recency": "2024-01-08T...", "maintainers": 3,
-#       "downloads": 400000000, "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     name (str)
+#         Crate name.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": int or
+#         None, "downloads": int or None, "deprecated": None,
+#         "registry_status": "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - Crate metadata request fails: registry_status is "not_found"
+#       (confirmed HTTP 404) or "failed" (any other failure), and
+#       every other field is None.
+################################################################################
 def health_rust(name):
     """Last-updated time and download count from crates.io's crate
     endpoint, plus owner count from its separate owners endpoint. No
     deprecation flag, crates.io exposes none."""
     registry_data, not_found = http_json(f"https://crates.io/api/v1/crates/{name}")
     if registry_data is None:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": None, "downloads": None, "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     crate = registry_data.get("crate") or {}
     owners_data, _ = http_json(f"https://crates.io/api/v1/crates/{name}/owners")
-    maintainer_count = len((owners_data or {}).get("users") or []) if owners_data else None
+    if owners_data:
+        maintainer_count = len((owners_data or {}).get("users") or [])
+    else:
+        maintainer_count = None
     return {
         "recency": crate.get("updated_at"),
         "maintainers": maintainer_count,
@@ -2439,42 +3177,60 @@ def health_rust(name):
     }
 
 
-# ------------------------------------------------------------------------
-# health_ruby
+################################################################################
+# FUNCTION: health_ruby
 #
-# WHAT IT DOES:   Fetches a gem's version-created time, authors string,
-#                 and download count from RubyGems.
-# WHY IT EXISTS:  Ruby-specific registry health fetcher for health mode.
+# PURPOSE
+#     Fetches a gem's version-created time, authors string, and
+#     download count from RubyGems, the Ruby-specific registry health
+#     fetcher for health mode.
 #
-# INPUTS:
-#   name (str) - gem name.
+# RESPONSIBILITIES
+#     - Fetch the gem's metadata.
+#     - Extract version-created time, authors string, and download
+#       count.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": str
-#   (RubyGems only exposes a free-text `authors` field, not a real
-#   maintainer count, labeled as such), "downloads": int or None,
-#   "deprecated": None (RubyGems exposes no deprecation flag),
-#   "registry_status": "ok"|"not_found"|"failed"}.
+# PROCESS OVERVIEW
+#     1. Request the gem's metadata.
+#     2. If that request failed, return a result with every field
+#        empty and the appropriate registry_status.
+#     3. Otherwise, return its version-created time, authors string,
+#        and download count.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes one outbound network request.
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - "maintainers" is really RubyGems' free-text `authors` field,
+#       not a real maintainer count; the field is labeled as such.
+#     - RubyGems exposes no deprecation flag, so "deprecated" is
+#       always None here.
 #
-# EXAMPLE:
-#   health_ruby("rails")
-#   -> {"recency": "2023-12-13T...", "maintainers": "David Heinemeier Hansson",
-#       "downloads": 500000000, "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     name (str)
+#         Gem name.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": str,
+#         "downloads": int or None, "deprecated": None,
+#         "registry_status": "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - Gem metadata request fails: registry_status is "not_found"
+#       (confirmed HTTP 404) or "failed" (any other failure), and
+#       every other field is empty.
+################################################################################
 def health_ruby(name):
     """Version-created time and download count from RubyGems' gem
     endpoint. "maintainers" is really the free-text `authors` field, not
     a real count, labeled as such. No deprecation flag exposed."""
     registry_data, not_found = http_json(f"https://rubygems.org/api/v1/gems/{name}.json")
     if registry_data is None:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a (authors string, not a count)", "downloads": None,
-            "deprecated": None, "registry_status": "not_found" if not_found else "failed",
+            "deprecated": None, "registry_status": registry_status,
         }
     return {
         "recency": registry_data.get("version_created_at"),
@@ -2485,33 +3241,49 @@ def health_ruby(name):
     }
 
 
-# ------------------------------------------------------------------------
-# health_php
+################################################################################
+# FUNCTION: health_php
 #
-# WHAT IT DOES:   Fetches a Composer package's latest publish time and
-#                 maintainer count from Packagist.
-# WHY IT EXISTS:  PHP-specific registry health fetcher for health mode.
+# PURPOSE
+#     Fetches a Composer package's latest publish time and maintainer
+#     count from Packagist, the PHP-specific registry health fetcher
+#     for health mode.
 #
-# INPUTS:
-#   vendor_pkg (str) - "vendor/package" name.
+# RESPONSIBILITIES
+#     - Fetch the package's v2 metadata.
+#     - Fetch its maintainer list from the separate package-info
+#       endpoint.
+#     - Extract latest publish time and maintainer count.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": int or
-#   None, "downloads": "n/a" (Packagist exposes no download volume in
-#   this API), "deprecated": None (no deprecation flag either),
-#   "registry_status": "ok"|"not_found"|"failed"}.
+# PROCESS OVERVIEW
+#     1. Request the package's v2 metadata.
+#     2. If that request failed, return a result with every field
+#        empty and the appropriate registry_status.
+#     3. Otherwise, extract the latest version's publish time.
+#     4. Request the package's maintainer list from the package-info
+#        endpoint and count its entries.
+#     5. Return the combined result.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes two outbound network requests (v2 metadata,
-#                 package-info for maintainers).
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - Packagist exposes no download volume or deprecation flag in
+#       this API, so "downloads" is always "n/a" and "deprecated" is
+#       always None here.
 #
-# EXAMPLE:
-#   health_php("monolog/monolog")
-#   -> {"recency": "2023-10-27T...", "maintainers": 2, "downloads": "n/a",
-#       "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     vendor_pkg (str)
+#         "vendor/package" name.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": int or
+#         None, "downloads": "n/a", "deprecated": None,
+#         "registry_status": "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - v2 metadata request fails: registry_status is "not_found"
+#       (confirmed HTTP 404) or "failed" (any other failure), and
+#       every other field is empty.
+################################################################################
 def health_php(vendor_pkg):
     """Latest version's publish time from Packagist's v2 metadata
     endpoint, plus maintainer count from its separate package-info
@@ -2519,9 +3291,13 @@ def health_php(vendor_pkg):
     neither."""
     registry_data, not_found = http_json(f"https://repo.packagist.org/p2/{vendor_pkg}.json")
     if registry_data is None:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": None, "downloads": "n/a", "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     versions = ((registry_data.get("packages") or {}).get(vendor_pkg) or [])
     recency = versions[0].get("time") if versions else None
@@ -2535,48 +3311,71 @@ def health_php(vendor_pkg):
     }
 
 
-# ------------------------------------------------------------------------
-# health_java
+################################################################################
+# FUNCTION: health_java
 #
-# WHAT IT DOES:   Fetches a Maven artifact's latest index timestamp from
-#                 Maven Central's search API.
-# WHY IT EXISTS:  Java-specific registry health fetcher for health mode.
-#                 Maven Central exposes no maintainer count, download
-#                 volume, or deprecation flag at all, so this reports the
-#                 least of any ecosystem here.
+# PURPOSE
+#     Fetches a Maven artifact's latest index timestamp from Maven
+#     Central's search API, the Java-specific registry health fetcher
+#     for health mode. Maven Central exposes no maintainer count,
+#     download volume, or deprecation flag at all, so this reports the
+#     least of any ecosystem here.
 #
-# INPUTS:
-#   group_artifact (str) - "groupId:artifactId" pair, or just a bare
-#     artifactId (used as a fallback search term if there's no ":").
+# RESPONSIBILITIES
+#     - Split group_artifact into a groupId and artifactId, if
+#       possible.
+#     - Build the appropriate Maven Central search query.
+#     - Extract the latest matching document's index timestamp.
 #
-# RETURNS:
-#   (dict) - {"recency": epoch-millisecond timestamp or None,
-#   "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-#   "registry_status": "ok"|"not_found"|"failed"}. Note recency here is a
-#   raw Maven Central index timestamp (milliseconds since epoch), not an
-#   ISO 8601 string like most other ecosystems' health_* functions return.
+# PROCESS OVERVIEW
+#     1. Split group_artifact into groupId and artifactId.
+#     2. If there's an artifactId, build a query matching both; if
+#        there isn't (a bare artifactId was given as group_artifact),
+#        build a query matching just that as an artifactId.
+#     3. Request Maven Central's search API with that query.
+#     4. If that request failed, return a result with recency empty
+#        and the appropriate registry_status.
+#     5. Otherwise, return the first matching document's timestamp.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes one outbound network request.
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - recency here is a raw Maven Central index timestamp
+#       (milliseconds since epoch), not an ISO 8601 string like most
+#       other ecosystems' health_* functions return.
 #
-# EXAMPLE:
-#   health_java("org.springframework:spring-core")
-#   -> {"recency": 1702300000000, "maintainers": "n/a", "downloads": "n/a",
-#       "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     group_artifact (str)
+#         "groupId:artifactId" pair, or just a bare artifactId (used
+#         as a fallback search term if there's no ":").
+#
+# RETURNS
+#     dict
+#         {"recency": epoch-millisecond timestamp or None,
+#         "maintainers": "n/a", "downloads": "n/a", "deprecated":
+#         None, "registry_status": "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - Search API request fails: registry_status is "not_found"
+#       (confirmed HTTP 404) or "failed" (any other failure), and
+#       recency is None.
+################################################################################
 def health_java(group_artifact):
     """Latest version's index timestamp from the Maven Central search API.
     No maintainer count, download volume, or deprecation flag, Maven
     Central exposes none of those."""
     group_id, _, artifact_id = group_artifact.partition(":")
-    query = f"g:{group_id}+AND+a:{artifact_id}" if artifact_id else f"a:{group_id}"
+    if artifact_id:
+        query = f"g:{group_id}+AND+a:{artifact_id}"
+    else:
+        query = f"a:{group_id}"
     registry_data, not_found = http_json(f"https://search.maven.org/solrsearch/select?q={query}&core=gav&rows=1&wt=json")
     if not registry_data:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     docs = ((registry_data.get("response") or {}).get("docs") or [])
     recency = docs[0].get("timestamp") if docs else None
@@ -2586,44 +3385,64 @@ def health_java(group_artifact):
     }
 
 
-# ------------------------------------------------------------------------
-# health_dotnet
+################################################################################
+# FUNCTION: health_dotnet
 #
-# WHAT IT DOES:   Fetches a NuGet package's latest catalog entry publish
-#                 time from NuGet's registration API.
-# WHY IT EXISTS:  .NET-specific registry health fetcher for health mode.
+# PURPOSE
+#     Fetches a NuGet package's latest catalog entry publish time from
+#     NuGet's registration API, the .NET-specific registry health
+#     fetcher for health mode.
 #
-# INPUTS:
-#   name (str) - NuGet package id.
+# RESPONSIBILITIES
+#     - Fetch the package's registration index.
+#     - Navigate its paginated version list to the latest catalog
+#       entry.
+#     - Extract that entry's publish time.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": "n/a",
-#   "downloads": "n/a", "deprecated": None, "registry_status":
-#   "ok"|"not_found"|"failed"}. No maintainer count, download volume, or
-#   deprecation flag, parsing those reliably out of this API isn't worth
-#   the guesswork involved.
+# PROCESS OVERVIEW
+#     1. Request the package's registration index.
+#     2. If that request failed, return a result with recency empty
+#        and the appropriate registry_status.
+#     3. Otherwise, navigate to the last page's last catalog item and
+#        read its publish time, treating any unexpected shape as a
+#        missing value rather than raising.
+#     4. Return the result.
 #
-# RAISES/ERRORS:  None; failures (including malformed/unexpected response
-#                 shapes, caught via IndexError/KeyError/TypeError) all
-#                 surface as recency=None rather than crashing.
-# SIDE EFFECTS:   Makes one outbound network request.
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - No maintainer count, download volume, or deprecation flag;
+#       parsing those out of this API reliably isn't worth the
+#       guesswork involved.
 #
-# EXAMPLE:
-#   health_dotnet("Newtonsoft.Json")
-#   -> {"recency": "2023-03-08T...", "maintainers": "n/a",
-#       "downloads": "n/a", "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     name (str)
+#         NuGet package id.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": "n/a",
+#         "downloads": "n/a", "deprecated": None, "registry_status":
+#         "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - Registration index request fails: registry_status is
+#       "not_found" (confirmed HTTP 404) or "failed" (any other
+#       failure), and recency is None.
+#     - Registration index has an unexpected shape (caught via
+#       IndexError/KeyError/TypeError): recency is None.
+################################################################################
 def health_dotnet(name):
     """Latest catalog entry's publish time from NuGet's registration API.
     No maintainer count, download volume, or deprecation flag, parsing
     those out of this API reliably isn't worth the guesswork."""
     registry_data, not_found = http_json(f"https://api.nuget.org/v3/registration5-semver1/{name.lower()}/index.json")
     if not registry_data:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     try:
         # NuGet's registration API paginates versions into "pages"; the
@@ -2642,41 +3461,61 @@ def health_dotnet(name):
     }
 
 
-# ------------------------------------------------------------------------
-# health_dart
+################################################################################
+# FUNCTION: health_dart
 #
-# WHAT IT DOES:   Fetches a package's latest version publish time and
-#                 publisher identity from pub.dev.
-# WHY IT EXISTS:  Dart-specific registry health fetcher for health mode.
+# PURPOSE
+#     Fetches a package's latest version publish time and publisher
+#     identity from pub.dev, the Dart-specific registry health fetcher
+#     for health mode.
 #
-# INPUTS:
-#   name (str) - package name.
+# RESPONSIBILITIES
+#     - Fetch the package's metadata.
+#     - Extract the latest version's publish time and the package's
+#       publisher.
 #
-# RETURNS:
-#   (dict) - {"recency": ISO timestamp or None, "maintainers": str (a
-#   single publisher identity, not a count) or "n/a", "downloads": "n/a"
-#   (pub.dev exposes no download volume here), "deprecated": None,
-#   "registry_status": "ok"|"not_found"|"failed"}.
+# PROCESS OVERVIEW
+#     1. Request the package's metadata.
+#     2. If that request failed, return a result with every field
+#        empty and the appropriate registry_status.
+#     3. Otherwise, return the latest version's publish time and the
+#        package's publisher.
 #
-# RAISES/ERRORS:  None; failures surface as registry_status/None fields.
-# SIDE EFFECTS:   Makes one outbound network request.
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          http_json().
+# IMPORTANT DETAILS
+#     - "maintainers" here is a single publisher identity, not a real
+#       maintainer count.
+#     - pub.dev exposes no download volume or deprecation flag in this
+#       API, so "downloads" is always "n/a" and "deprecated" is always
+#       None here.
 #
-# EXAMPLE:
-#   health_dart("http")
-#   -> {"recency": "2024-02-19T...", "maintainers": "dart.dev",
-#       "downloads": "n/a", "deprecated": None, "registry_status": "ok"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     name (str)
+#         Package name.
+#
+# RETURNS
+#     dict
+#         {"recency": ISO timestamp or None, "maintainers": str or
+#         "n/a", "downloads": "n/a", "deprecated": None,
+#         "registry_status": "ok"|"not_found"|"failed"}.
+#
+# FAILURE CASES
+#     - Package metadata request fails: registry_status is
+#       "not_found" (confirmed HTTP 404) or "failed" (any other
+#       failure), and every other field is empty.
+################################################################################
 def health_dart(name):
     """Latest version's publish time and publisher (a single identity, not
     a maintainer count) from pub.dev's package API. No download volume or
     deprecation flag, pub.dev exposes neither here."""
     registry_data, not_found = http_json(f"https://pub.dev/api/packages/{name}")
     if not registry_data:
+        if not_found:
+            registry_status = "not_found"
+        else:
+            registry_status = "failed"
         return {
             "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": "not_found" if not_found else "failed",
+            "registry_status": registry_status,
         }
     return {
         "recency": (registry_data.get("latest") or {}).get("published"),
@@ -2687,38 +3526,43 @@ def health_dart(name):
     }
 
 
-# ------------------------------------------------------------------------
-# health_cpp
+################################################################################
+# FUNCTION: health_cpp
 #
-# WHAT IT DOES:   Reports that no registry health metadata is available
-#                 for C/C++ packages.
-# WHY IT EXISTS:  Neither ConanCenter nor vcpkg expose a public metadata
-#                 API comparable to npm/PyPI/crates.io, so rather than
-#                 guessing or omitting the field entirely, this function
-#                 makes the "unavailable" state explicit and consistent
-#                 with every other ecosystem's response shape.
+# PURPOSE
+#     Reports that no registry health metadata is available for C/C++
+#     packages. Neither ConanCenter nor vcpkg expose a public metadata
+#     API comparable to npm/PyPI/crates.io, so rather than guessing or
+#     omitting the field entirely, this function makes the
+#     "unavailable" state explicit and consistent with every other
+#     ecosystem's response shape.
 #
-# INPUTS:
-#   _name (str) - unused (accepted so this function matches every other
-#     HEALTH_FN entry's one-argument signature); the leading underscore
-#     signals that.
+# RESPONSIBILITIES
+#     - Return the fixed "unavailable" result shape.
 #
-# RETURNS:
-#   (dict) - {"recency": None, "maintainers": "n/a", "downloads": "n/a",
-#   "deprecated": None, "registry_status": "unavailable"}. Always the
-#   same value regardless of input.
+# PROCESS OVERVIEW
+#     1. Return the same fixed dict regardless of input.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None. Unlike every other health_* function, this makes
-#                 no network request at all, there's no endpoint to call.
-# CALLED BY:      run_health() via the HEALTH_FN dispatch table.
-# CALLS:          None.
+# IMPORTANT DETAILS
+#     - Unlike every other health_* function, this makes no network
+#       request at all; there's no endpoint to call. The OSV
+#       vulnerability check still runs independently in run_health(),
+#       since it's the one live signal available for this ecosystem.
 #
-# EXAMPLE:
-#   health_cpp("fmt")
-#   -> {"recency": None, "maintainers": "n/a", "downloads": "n/a",
-#       "deprecated": None, "registry_status": "unavailable"}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     _name (str)
+#         Unused; accepted only so this function matches every other
+#         HEALTH_FN entry's one-argument signature.
+#
+# RETURNS
+#     dict
+#         {"recency": None, "maintainers": "n/a", "downloads": "n/a",
+#         "deprecated": None, "registry_status": "unavailable"}.
+#         Always the same value regardless of input.
+#
+# FAILURE CASES
+#     - None.
+################################################################################
 def health_cpp(_name):
     """Neither ConanCenter nor vcpkg expose a public metadata API
     comparable to npm/PyPI/crates.io, so recency/maintainers/downloads
@@ -2740,53 +3584,172 @@ HEALTH_FN = {
 }
 
 
-# ------------------------------------------------------------------------
-# health_tier
+# A flat 30-day month, not calendar-accurate, used only to turn a
+# timestamp's age into an approximate number of months for health_tier()'s
+# thresholds below.
+APPROXIMATE_DAYS_PER_MONTH = 30.0
+
+# These specific cutoffs are documented thresholds in
+# references/registry-health-signals.md, not arbitrary; keep both in sync
+# if either changes.
+STALE_RELEASE_MONTHS_THRESHOLD = 12
+ZERO_MAINTAINERS_COUNT = 0
+RECENT_RELEASE_MONTHS_THRESHOLD = 3
+HEALTHY_MAINTAINER_COUNT_THRESHOLD = 2
+HEALTHY_DOWNLOAD_COUNT_THRESHOLD = 10000
+
+################################################################################
+# FUNCTION: months_since
 #
-# WHAT IT DOES:   Combines every raw health signal (recency, maintainer
-#                 count, download volume, vulnerability status, explicit
-#                 deprecation, curated abandonment) into one overall
-#                 verdict: healthy, slowing, at_risk, or unknown.
-# WHY IT EXISTS:  This is the single place that decides, given several
-#                 independent and sometimes-missing signals, what the
-#                 bottom-line answer is. Keeping that decision in one
-#                 function means the priority order between signals (a
-#                 confirmed deprecation always wins, a scoped
-#                 vulnerability always wins, etc.) is written once and
-#                 applied consistently.
+# PURPOSE
+#     Converts an ISO 8601 timestamp string into how many months ago
+#     that was, relative to right now. health_tier() needs a single,
+#     forgiving timestamp-age calculation that never raises, since
+#     different registries format timestamps slightly differently
+#     (some use "Z", some an explicit offset, some have no offset at
+#     all).
 #
-# INPUTS:
-#   recency (str or None) - ISO 8601 timestamp of the latest release, or
-#     a non-string value (like Maven's epoch-millisecond timestamp, or the
-#     "n/a" strings some health_* functions return) which is treated as
-#     "not present" rather than parsed.
-#   maintainers (int, str, or None) - maintainer count if it's a real int;
-#     any other type (including "n/a" strings) is treated as "not present."
-#   downloads (int, str, or None) - same treatment as maintainers.
-#   vuln_status (dict) - the dict returned by check_osv().
-#   deprecated (str or None) - a maintainer-declared deprecation message,
-#     if any.
-#   abandoned (dict or None) - the entry returned by
-#     abandoned_packages.lookup(), if any.
+# RESPONSIBILITIES
+#     - Normalize the timestamp's "Z" suffix, if present, to an
+#       explicit "+00:00" offset.
+#     - Parse the normalized timestamp.
+#     - Assume UTC for a timestamp with no timezone info at all.
+#     - Compute the elapsed time in months.
 #
-# RETURNS:
-#   (str) - one of "at_risk", "healthy", "slowing", "unknown". "unknown"
-#   only when none of recency/maintainers/downloads could be read as a
-#   real value, distinguishing "genuinely can't tell" from "checked and
-#   it's fine."
+# PROCESS OVERVIEW
+#     1. If iso_timestamp is falsy, return None immediately.
+#     2. Normalize a trailing "Z" to "+00:00".
+#     3. Parse the normalized timestamp.
+#     4. If the parsed timestamp has no timezone info, assume UTC.
+#     5. Compute the elapsed time between now and the parsed timestamp.
+#     6. Convert that elapsed time to an approximate number of months
+#        and return it.
+#     7. If parsing failed at any point, return None instead of
+#        raising.
 #
-# RAISES/ERRORS:  None; a malformed recency timestamp is caught internally
-#                 (ValueError/TypeError) and treated as missing.
-# SIDE EFFECTS:   None.
-# CALLED BY:      run_health().
-# CALLS:          None external; defines and calls a local months_since()
-#                 helper.
+# IMPORTANT DETAILS
+#     - "Z" (Zulu/UTC) isn't accepted by fromisoformat() on older
+#       Python versions; normalizing it to "+00:00" first avoids that
+#       incompatibility.
+#     - A timestamp with no timezone info at all is assumed to already
+#       be UTC. BE CAREFUL if a new registry is added whose timestamps
+#       are naive but in local time instead; this assumption would
+#       silently misjudge recency for it.
+#     - Months are approximated using APPROXIMATE_DAYS_PER_MONTH, not
+#       calendar-accurate.
 #
-# EXAMPLE:
-#   health_tier("2016-03-25T00:00:00Z", 1, 2000000,
-#               {"vulnerabilities": [], "version_scoped": True})
-#   -> "at_risk"  # recency is far more than 12 months old
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     iso_timestamp (str or None/other)
+#         The value to parse; anything falsy short-circuits to None
+#         immediately.
+#
+# RETURNS
+#     float or None
+#         Approximate months elapsed, or None if iso_timestamp is
+#         empty or not parseable.
+#
+# FAILURE CASES
+#     - iso_timestamp is empty, malformed, or otherwise not parseable
+#       (ValueError/TypeError): returns None.
+################################################################################
+def months_since(iso_timestamp):
+    if not iso_timestamp:
+        return None
+    try:
+        from datetime import datetime, timezone
+        normalized = iso_timestamp.replace("Z", "+00:00")
+        published_at = datetime.fromisoformat(normalized)
+        if published_at.tzinfo is None:
+            published_at = published_at.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - published_at
+        return age.days / APPROXIMATE_DAYS_PER_MONTH
+    except (ValueError, TypeError):
+        return None
+
+
+################################################################################
+# FUNCTION: health_tier
+#
+# PURPOSE
+#     Combines every raw health signal (recency, maintainer count,
+#     download volume, vulnerability status, explicit deprecation,
+#     curated abandonment) into one overall verdict: healthy, slowing,
+#     at_risk, or unknown. This is the single place that decides,
+#     given several independent and sometimes-missing signals, what
+#     the bottom-line answer is. Keeping that decision in one function
+#     means the priority order between signals (a confirmed
+#     deprecation always wins, a scoped vulnerability always wins,
+#     etc.) is written once and applied consistently.
+#
+# RESPONSIBILITIES
+#     - Give deprecation and curated abandonment the highest priority.
+#     - Give a version-scoped vulnerability the next priority.
+#     - Normalize recency, maintainers, and downloads to either a real
+#       value or "not present."
+#     - Apply the documented thresholds to whatever real values remain.
+#
+# PROCESS OVERVIEW
+#     1. If deprecated or abandoned is set, return "at_risk"
+#        immediately.
+#     2. If vuln_status has vulnerabilities and is version-scoped,
+#        return "at_risk" immediately.
+#     3. Convert recency to months-since-release if it's a string,
+#        else treat it as not present.
+#     4. Treat maintainers/downloads as their real int value if they
+#        are one, else treat them as not present.
+#     5. If none of the three signals could be read as a real value,
+#        return "unknown".
+#     6. If the release is stale enough, or there are zero
+#        maintainers, return "at_risk".
+#     7. If the release is recent enough and either the maintainer or
+#        download count looks healthy (or maintainer count is
+#        unknown), return "healthy".
+#     8. Otherwise, return "slowing".
+#
+# IMPORTANT DETAILS
+#     - Any field that isn't a real number (an "n/a" string, a missing
+#       value) is treated as not present, not as zero.
+#     - A maintainer-declared deprecation (npm's `deprecated` field, a
+#       PyPI release with every file yanked) or a hit in the curated
+#       abandoned-package list overrides every other signal; these are
+#       more precise than any threshold inferred from
+#       recency/maintainers/downloads.
+#     - A known vulnerability in the version actually pinned overrides
+#       every other signal, however healthy the project otherwise
+#       looks. An unscoped result (couldn't resolve the pinned
+#       version) doesn't get this power; see check_osv()'s docstring
+#       for why.
+#     - "unknown" is returned only when none of
+#       recency/maintainers/downloads could be read as a real value,
+#       distinguishing "genuinely can't tell" from "checked and it's
+#       fine."
+#
+# PARAMETERS
+#     recency (str or None)
+#         ISO 8601 timestamp of the latest release, or a non-string
+#         value (like Maven's epoch-millisecond timestamp, or the
+#         "n/a" strings some health_* functions return), which is
+#         treated as "not present" rather than parsed.
+#     maintainers (int, str, or None)
+#         Maintainer count if it's a real int; any other type
+#         (including "n/a" strings) is treated as "not present."
+#     downloads (int, str, or None)
+#         Same treatment as maintainers.
+#     vuln_status (dict)
+#         The dict returned by check_osv().
+#     deprecated (str or None)
+#         A maintainer-declared deprecation message, if any.
+#     abandoned (dict or None)
+#         The entry returned by abandoned_packages.lookup(), if any.
+#
+# RETURNS
+#     str
+#         One of "at_risk", "healthy", "slowing", "unknown".
+#
+# FAILURE CASES
+#     - None; a malformed recency timestamp is caught internally by
+#       months_since() and treated as missing.
+################################################################################
 def health_tier(recency, maintainers, downloads, vuln_status, deprecated=None, abandoned=None):
     """Combines the raw health fields into one of healthy/slowing/at_risk/
     unknown, per the thresholds in references/registry-health-signals.md.
@@ -2805,114 +3768,100 @@ def health_tier(recency, maintainers, downloads, vuln_status, deprecated=None, a
     if vuln_status.get("vulnerabilities") and vuln_status.get("version_scoped"):
         return "at_risk"
 
-    def months_since(iso_timestamp):
-        # ------------------------------------------------------------
-        # months_since
-        # WHAT IT DOES: Converts an ISO 8601 timestamp string into how
-        #   many months ago that was, relative to right now.
-        # WHY IT EXISTS: health_tier() needs a single, forgiving
-        #   timestamp-age calculation that never raises, since
-        #   different registries format timestamps slightly
-        #   differently (some use "Z", some an explicit offset, some
-        #   have no offset at all).
-        # INPUTS: iso_timestamp (str or None/other) - the value to
-        #   parse; anything falsy short-circuits to None immediately.
-        # RETURNS: (float or None) - approximate months elapsed (using
-        #   a flat 30-day month, not calendar-accurate), or None if
-        #   iso_timestamp is empty or not parseable.
-        # RAISES/ERRORS: None; ValueError/TypeError from a bad format
-        #   are caught internally.
-        # CALLED BY: health_tier(), for each of the three raw inputs.
-        # ------------------------------------------------------------
-        if not iso_timestamp:
-            return None
-        try:
-            from datetime import datetime, timezone
-            # "Z" (Zulu/UTC) isn't accepted by fromisoformat() on older
-            # Python versions; normalizing it to "+00:00" first avoids
-            # that incompatibility.
-            normalized = iso_timestamp.replace("Z", "+00:00")
-            published_at = datetime.fromisoformat(normalized)
-            if published_at.tzinfo is None:
-                # A timestamp with no timezone info at all is assumed to
-                # already be UTC; BE CAREFUL if a new registry is added
-                # whose timestamps are naive but in local time instead,
-                # this assumption would silently misjudge recency for it.
-                published_at = published_at.replace(tzinfo=timezone.utc)
-            age = datetime.now(timezone.utc) - published_at
-            return age.days / 30.0
-        except (ValueError, TypeError):
-            return None
+    if isinstance(recency, str):
+        months_since_release = months_since(recency)
+    else:
+        months_since_release = None
 
-    months_since_release = months_since(recency) if isinstance(recency, str) else None
-    maintainer_count = maintainers if isinstance(maintainers, int) else None
-    download_count = downloads if isinstance(downloads, int) else None
+    if isinstance(maintainers, int):
+        maintainer_count = maintainers
+    else:
+        maintainer_count = None
+
+    if isinstance(downloads, int):
+        download_count = downloads
+    else:
+        download_count = None
 
     if months_since_release is None and maintainer_count is None and download_count is None:
         return "unknown"
 
-    # These specific cutoffs (12 months stale, 0 maintainers, <3 months +
-    # healthy maintainer/download counts) are documented thresholds in
-    # references/registry-health-signals.md, not arbitrary; keep both in
-    # sync if either changes.
-    if months_since_release is not None and months_since_release > 12:
+    if months_since_release is not None and months_since_release > STALE_RELEASE_MONTHS_THRESHOLD:
         return "at_risk"
-    if maintainer_count is not None and maintainer_count == 0:
+    if maintainer_count is not None and maintainer_count == ZERO_MAINTAINERS_COUNT:
         return "at_risk"
 
-    if months_since_release is not None and months_since_release < 3 and (
-            maintainer_count is None or maintainer_count >= 2 or
-            (download_count is not None and download_count >= 10000)):
+    release_is_recent = months_since_release is not None and months_since_release < RECENT_RELEASE_MONTHS_THRESHOLD
+    maintainer_or_download_count_looks_healthy = (
+        maintainer_count is None
+        or maintainer_count >= HEALTHY_MAINTAINER_COUNT_THRESHOLD
+        or (download_count is not None and download_count >= HEALTHY_DOWNLOAD_COUNT_THRESHOLD)
+    )
+    if release_is_recent and maintainer_or_download_count_looks_healthy:
         return "healthy"
 
     return "slowing"
 
 
-# ------------------------------------------------------------------------
-# run_health
+################################################################################
+# FUNCTION: run_health
 #
-# WHAT IT DOES:   For each given package name: fetches registry health
-#                 data, resolves its pinned version, checks OSV.dev for
-#                 vulnerabilities in that version, checks the curated
-#                 abandoned-package list, and computes an overall health
-#                 tier.
-# WHY IT EXISTS:  This is the top-level function for health mode's
-#                 "health <ecosystem> <repo_path> <name>..." CLI
-#                 invocation; it's what ties together every other
-#                 function in this section into one per-package result.
+# PURPOSE
+#     For each given package name: fetches registry health data,
+#     resolves its pinned version, checks OSV.dev for vulnerabilities
+#     in that version, checks the curated abandoned-package list, and
+#     computes an overall health tier. This is the top-level function
+#     for health mode's "health <ecosystem> <repo_path> <name>..." CLI
+#     invocation; it's what ties together every other function in
+#     this section into one per-package result.
 #
-# INPUTS:
-#   ecosystem (str) - which ecosystem's health_*/resolve_version_*
-#     functions to use.
-#   names (list[str]) - package names to check. Should already be
-#     triaged/limited by the caller, see the module docstring's note on
-#     bounding outbound calls.
-#   root (str or None) - repo path to resolve pinned versions from; if
-#     None, no version resolution is attempted (every OSV check runs
-#     unscoped).
+# RESPONSIBILITIES
+#     - Look up the ecosystem's health_* fetcher, if one exists.
+#     - For each name, fetch its registry health data.
+#     - Resolve its pinned version, if a repo root was given.
+#     - Check OSV.dev for vulnerabilities in that version.
+#     - Check the curated abandoned-package list.
+#     - Compute an overall health tier from all of the above.
 #
-# RETURNS:
-#   (dict) - {name: {"pinned_version", "recency", "maintainers",
-#   "downloads", "deprecated", "registry_status", "vulnerabilities",
-#   "abandoned", "health_tier"}} for every name in names.
+# PROCESS OVERVIEW
+#     1. Look up the ecosystem's health_* fetcher function.
+#     2. For each name in names:
+#        a. Fetch its registry health data, or a fixed "unavailable"
+#           result if this ecosystem has no health fetcher.
+#        b. Resolve its pinned version from root's lockfile, if root
+#           was given.
+#        c. Check OSV.dev for vulnerabilities in that version.
+#        d. Check the curated abandoned-package list.
+#        e. Compute its overall health tier.
+#        f. Record the combined result under name.
+#     3. Return the collected results.
 #
-# RAISES/ERRORS:  None expected; every sub-call already handles its own
-#                 failures internally.
-# SIDE EFFECTS:   Makes multiple outbound network requests per name
-#                 (registry metadata, OSV.dev). Reads root's lockfiles
-#                 locally if root is given.
-# CALLED BY:      main() (health mode).
-# CALLS:          HEALTH_FN's matching function, resolve_version(),
-#                 check_osv(), abandoned_packages.lookup(), health_tier().
+# IMPORTANT DETAILS
+#     - names should already be triaged/limited by the caller; see the
+#       module docstring's note on bounding outbound calls.
+#     - If root is None, no version resolution is attempted, and every
+#       OSV check runs unscoped.
 #
-# EXAMPLE:
-#   run_health("python", ["nose"], root="/repo")
-#   -> {"nose": {"pinned_version": "1.3.7", "recency": None,
-#                "maintainers": "n/a", "downloads": 120000,
-#                "deprecated": None, "registry_status": "ok",
-#                "vulnerabilities": {...}, "abandoned": {"reason": "...",
-#                "replacement": "pytest"}, "health_tier": "at_risk"}}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     ecosystem (str)
+#         Which ecosystem's health_*/resolve_version_* functions to
+#         use.
+#     names (list[str])
+#         Package names to check.
+#     root (str or None)
+#         Repo path to resolve pinned versions from.
+#
+# RETURNS
+#     dict
+#         {name: {"pinned_version", "recency", "maintainers",
+#         "downloads", "deprecated", "registry_status",
+#         "vulnerabilities", "abandoned", "health_tier"}} for every
+#         name in names.
+#
+# FAILURE CASES
+#     - None expected; every sub-call already handles its own
+#       failures internally.
+################################################################################
 def run_health(ecosystem, names, root=None):
     """For each name: looks up registry health data, resolves its pinned
     version from root's lockfile (if root is given), checks OSV for
@@ -2921,11 +3870,18 @@ def run_health(ecosystem, names, root=None):
     health_lookup = HEALTH_FN.get(ecosystem)
     results = {}
     for name in names:
-        registry_data = health_lookup(name) if health_lookup else {
-            "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
-            "registry_status": "unavailable",
-        }
-        pinned_version = resolve_version(root, ecosystem, name) if root else None
+        if health_lookup:
+            registry_data = health_lookup(name)
+        else:
+            registry_data = {
+                "recency": None, "maintainers": "n/a", "downloads": "n/a", "deprecated": None,
+                "registry_status": "unavailable",
+            }
+
+        if root:
+            pinned_version = resolve_version(root, ecosystem, name)
+        else:
+            pinned_version = None
         vulnerability_info = check_osv(ecosystem, name, pinned_version)
         abandoned_entry = abandoned_packages.lookup(ecosystem, name)
         results[name] = {
@@ -2949,42 +3905,57 @@ def run_health(ecosystem, names, root=None):
 # ===== MAIN =====
 # --- main ------------------------------------------------------------------
 
-# ------------------------------------------------------------------------
-# main
+################################################################################
+# FUNCTION: main
 #
-# WHAT IT DOES:   CLI entry point. Reads sys.argv to decide between usage
-#                 mode and health mode, runs the corresponding function,
-#                 and prints its result as JSON.
-# WHY IT EXISTS:  This is what actually gets invoked when the script is
-#                 run from the command line or by the dead-weight-detector
-#                 skill.
+# PURPOSE
+#     Serves as the CLI entry point: reads sys.argv to decide between
+#     usage mode and health mode, runs the corresponding function, and
+#     prints its result as JSON. This is what actually gets invoked
+#     when the script is run from the command line or by the
+#     dead-weight-detector skill.
 #
-# INPUTS:
-#   None directly (reads sys.argv). sys.argv[1] must be "usage" or
-#   "health"; the remaining arguments depend on the mode, see the module
-#   docstring and USAGE field above.
+# RESPONSIBILITIES
+#     - Validate that a mode argument was given.
+#     - Parse the remaining arguments according to that mode's shape.
+#     - Run the matching top-level function and print its result as
+#       JSON.
 #
-# RETURNS:
-#   (None) - prints JSON to stdout; calls sys.exit(1) on bad arguments or
-#   an unrecognized mode instead of returning normally.
+# PROCESS OVERVIEW
+#     1. If no mode argument was given, print a usage error and exit
+#        with status 1.
+#     2. If the mode is "usage", parse the optional path argument
+#        (defaulting to "."), run run_usage(), and print its result.
+#     3. If the mode is "health", validate that ecosystem, repo_path,
+#        and at least one name were given (exiting with status 1 and
+#        a usage error if not), then run run_health() and print its
+#        result.
+#     4. If the mode is neither, print an unknown-mode error and exit
+#        with status 1.
 #
-# RAISES/ERRORS:  Calls sys.exit(1) (not a raised exception) when
-#                 sys.argv is too short or mode isn't "usage"/"health". An
-#                 unhandled exception from run_usage()/run_health() would
-#                 still propagate and crash with a non-zero exit, neither
-#                 function is expected to raise under normal use.
-# SIDE EFFECTS:   Prints to stdout. usage mode reads the filesystem only;
-#                 health mode also makes outbound network requests.
-# CALLED BY:      The `if __name__ == "__main__":` guard at the bottom of
-#                 this file.
-# CALLS:          run_usage(), run_health().
+# IMPORTANT DETAILS
+#     - usage mode reads the filesystem only; health mode also makes
+#       outbound network requests.
 #
-# EXAMPLE:
-#   $ python3 dead_weight_scan.py usage /home/user/my-repo
-#   {"python": [...], "javascript": [...]}
-#   $ python3 dead_weight_scan.py health python /home/user/my-repo nose
-#   {"nose": {...}}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     None
+#         Reads sys.argv directly: sys.argv[1] must be "usage" or
+#         "health"; the remaining arguments depend on the mode, see
+#         the module docstring.
+#
+# RETURNS
+#     None
+#         Prints JSON to stdout; calls sys.exit(1) on bad arguments or
+#         an unrecognized mode instead of returning normally.
+#
+# FAILURE CASES
+#     - No mode argument given: prints a usage error and exits with
+#       status 1.
+#     - Mode is "health" but fewer than 3 further arguments were
+#       given: prints a usage error and exits with status 1.
+#     - Mode is neither "usage" nor "health": prints an unknown-mode
+#       error and exits with status 1.
+################################################################################
 def main():
     """CLI entry point, dispatches to run_usage() or run_health() based on
     sys.argv[1], see the module docstring for the full argument shapes."""

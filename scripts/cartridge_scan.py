@@ -141,38 +141,50 @@ DEFAULT_REGISTRY_HOSTS = {
 
 # ===== HELPERS =====
 
-# ------------------------------------------------------------------------
-# read_text
+################################################################################
+# FUNCTION: read_text
 #
-# WHAT IT DOES:   Reads a file's full contents as text.
-# WHY IT EXISTS:  Every other function in this file needs to read
-#                 manifests/lockfiles/source files without crashing the
-#                 whole scan over one bad file (missing, permission
-#                 denied, binary garbage). Centralizing that tolerance
-#                 here means no caller has to wrap every read in its own
-#                 try/except.
+# PURPOSE
+#     Reads a file's full contents as text without ever raising, so a
+#     single unreadable or malformed file can't crash an entire scan of
+#     an untrusted repository.
 #
-# INPUTS:
-#   path (str) - filesystem path to read.
+# RESPONSIBILITIES
+#     - Open and read the file as UTF-8.
+#     - Tolerate any read failure by returning an empty string instead of
+#       raising.
 #
-# RETURNS:
-#   (str) - the file's contents decoded as UTF-8, with undecodable bytes
-#   silently dropped (errors="ignore"), so a binary file won't raise a
-#   UnicodeDecodeError, it just produces mangled text. "" means either an
-#   empty file or a read failure, callers can't tell which from this
-#   return value alone.
+# PROCESS OVERVIEW
+#     1. Open the file at the given path in UTF-8 text mode.
+#     2. Read and return its full contents.
+#     3. If opening or reading fails for any filesystem reason, return an
+#        empty string instead.
 #
-# RAISES/ERRORS:  Never raises; any OSError (missing file, permission
-#                 denied, etc.) is caught and turned into "".
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      Nearly every function in this file and in
-#                 dead_weight_scan.py.
-# CALLS:          open() (builtin).
+# IMPORTANT DETAILS
+#     - Undecodable bytes are silently dropped (errors="ignore"), so a
+#       binary file will not raise a UnicodeDecodeError; it will simply
+#       produce mangled text.
+#     - An empty string return is ambiguous: it means either the file was
+#       genuinely empty, or the read failed. Callers cannot distinguish
+#       the two from the return value alone.
+#     - This function is called by nearly every other function in this
+#       file and in dead_weight_scan.py, so centralizing this tolerance
+#       here means no caller has to wrap every read in its own
+#       try/except.
 #
-# EXAMPLE:
-#   read_text("/repo/package.json") -> '{\n  "name": "app",\n  ...}\n'
-#   read_text("/repo/missing.txt")  -> ""
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     path (str)
+#         Filesystem path to read.
+#
+# RETURNS
+#     str
+#         The file's UTF-8 decoded contents, or "" if the file could not
+#         be read.
+#
+# FAILURE CASES
+#     - Missing file, permission denied, or any other OSError: returns ""
+#       instead of raising.
+################################################################################
 def read_text(path):
     """Reads a file as UTF-8, tolerating decode errors. Returns "" on any
     failure (missing file, permission error, etc.) instead of raising."""
@@ -183,36 +195,44 @@ def read_text(path):
         return ""
 
 
-# ------------------------------------------------------------------------
-# read_json
+################################################################################
+# FUNCTION: read_json
 #
-# WHAT IT DOES:   Reads a file and parses it as JSON.
-# WHY IT EXISTS:  Manifest/lockfile parsing throughout this file needs a
-#                 "give me the parsed data or nothing" primitive that
-#                 never throws, since scanned repos are not trusted to
-#                 have well-formed files.
+# PURPOSE
+#     Gives every JSON-format manifest/lockfile reader in this file a
+#     single "give me the parsed data or nothing" primitive that never
+#     raises, since scanned repositories are not trusted to contain
+#     well-formed files.
 #
-# INPUTS:
-#   path (str) - filesystem path to a JSON file.
+# RESPONSIBILITIES
+#     - Read the file's contents via read_text().
+#     - Parse those contents as JSON.
+#     - Tolerate any parse failure by returning None instead of raising.
 #
-# RETURNS:
-#   (Any or None) - the parsed JSON value (usually a dict or list) on
-#   success. None if the file is missing, unreadable, or not valid JSON.
-#   Callers must check for None before indexing into the result.
+# PROCESS OVERVIEW
+#     1. Read the file's contents as text via read_text().
+#     2. Parse the text as JSON.
+#     3. If parsing fails, return None instead.
 #
-# RAISES/ERRORS:  Never raises; ValueError (bad JSON) and TypeError
-#                 (json.loads(None), which can't happen here but is
-#                 guarded anyway) are both caught.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      Most scan_* functions when the manifest/lockfile format
-#                 is JSON (package.json, composer.json, Pipfile.lock,
-#                 etc.).
-# CALLS:          read_text(), json.loads().
+# IMPORTANT DETAILS
+#     - Callers must check for None before indexing into the result;
+#       read_text() already returns "" on a read failure, and "" is not
+#       valid JSON, so a missing or unreadable file and a malformed JSON
+#       file both end up here as None.
 #
-# EXAMPLE:
-#   read_json("/repo/package.json") -> {"name": "app", "dependencies": {}}
-#   read_json("/repo/not-json.txt") -> None
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     path (str)
+#         Filesystem path to a JSON file.
+#
+# RETURNS
+#     Any or None
+#         The parsed JSON value (usually a dict or list) on success, or
+#         None if the file is missing, unreadable, or not valid JSON.
+#
+# FAILURE CASES
+#     - File missing, unreadable, or not valid JSON: returns None instead
+#       of raising.
+################################################################################
 def read_json(path):
     """Reads and parses a file as JSON. Returns None if it's missing,
     unreadable, or not valid JSON, never raises."""
@@ -222,35 +242,49 @@ def read_json(path):
         return None
 
 
-# ------------------------------------------------------------------------
-# walk
+################################################################################
+# FUNCTION: walk
 #
-# WHAT IT DOES:   Walks a directory tree like os.walk(), but skips
-#                 dependency/build/VCS directories entirely.
-# WHY IT EXISTS:  Without this, every scan would waste time descending
-#                 into node_modules, .git, vendor, etc., and could
-#                 misreport third-party vendored code as first-party.
+# PURPOSE
+#     Provides a drop-in replacement for os.walk() that never descends
+#     into dependency/build/VCS directories, so every caller gets that
+#     pruning for free instead of reimplementing it.
 #
-# INPUTS:
-#   root (str) - directory to start walking from.
+# RESPONSIBILITIES
+#     - Walk the directory tree starting at root, same as os.walk().
+#     - Remove every directory name listed in EXCLUDE_DIRS from each
+#       yielded dirnames list before os.walk() descends further.
 #
-# RETURNS:
-#   (generator) - yields (dirpath, dirnames, filenames) tuples, same
-#   shape as os.walk(), except dirnames has already had every name in
-#   EXCLUDE_DIRS removed before being yielded.
+# PROCESS OVERVIEW
+#     1. Start an os.walk() traversal from root.
+#     2. For each (dirpath, dirnames, filenames) tuple os.walk() produces,
+#        remove any name in EXCLUDE_DIRS from dirnames.
+#     3. Yield the same tuple, now with dirnames pruned.
 #
-# RAISES/ERRORS:  Whatever os.walk() itself can raise (rare; it swallows
-#                 most per-directory errors by default).
-# SIDE EFFECTS:   None (read-only traversal).
-# CALLED BY:      find_files() and every scan_* function that iterates
-#                 the tree directly (scan_containers, scan_iac,
-#                 fallback_loc_scan).
-# CALLS:          os.walk().
+# IMPORTANT DETAILS
+#     - Without this pruning, a scan would waste time descending into
+#       node_modules, .git, vendor, and similar directories, and could
+#       misreport third-party vendored code as first-party.
+#     - dirnames must be mutated in place (dirnames[:] = ...), not
+#       reassigned (dirnames = ...). os.walk() keeps its own reference to
+#       the original list object and only skips descending into names
+#       that are removed from that same object; reassigning the local
+#       name would silently have no effect on traversal.
 #
-# EXAMPLE:
-#   for dirpath, dirnames, filenames in walk("/repo"): ...
-#   # dirnames will never contain "node_modules", ".git", etc.
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Directory to start walking from.
+#
+# RETURNS
+#     generator
+#         Yields (dirpath, dirnames, filenames) tuples, the same shape as
+#         os.walk(), except dirnames has already had every name in
+#         EXCLUDE_DIRS removed.
+#
+# FAILURE CASES
+#     - None expected beyond whatever os.walk() itself can raise, which
+#       is rare since it swallows most per-directory errors by default.
+################################################################################
 def walk(root):
     """Drop-in replacement for os.walk(root) that prunes EXCLUDE_DIRS from
     dirnames in place, so nothing under them is ever visited or yielded."""
@@ -263,41 +297,55 @@ def walk(root):
         yield dirpath, dirnames, filenames
 
 
-# ------------------------------------------------------------------------
-# find_files
+################################################################################
+# FUNCTION: find_files
 #
-# WHAT IT DOES:   Finds every file under a directory whose name either
-#                 exactly matches one of a set of names, or ends with one
-#                 of a set of suffixes.
-# WHY IT EXISTS:  This is the one file-finding primitive every scan_*
-#                 function uses instead of hand-rolling its own os.walk()
-#                 loop, so EXCLUDE_DIRS pruning is applied consistently
-#                 everywhere.
+# PURPOSE
+#     Gives every scan_* function in this file and in dead_weight_scan.py
+#     one shared file-finding primitive, so EXCLUDE_DIRS pruning is
+#     applied consistently everywhere instead of each function
+#     hand-rolling its own os.walk() loop.
 #
-# INPUTS:
-#   root (str) - directory to search under.
-#   names (iterable[str] or None) - exact filenames to match, e.g.
-#     {"package.json"}. Defaults to an empty set if None.
-#   suffixes (iterable[str] or None) - filename suffixes to match, e.g.
-#     (".csproj",) or ("requirements.txt",) to match anything ending in
-#     that string, not just a file extension. Defaults to () if None.
+# RESPONSIBILITIES
+#     - Normalize the names/suffixes filter arguments.
+#     - Walk the tree under root via walk(), which already prunes
+#       EXCLUDE_DIRS.
+#     - Collect the full path of every file whose name is an exact match
+#       in names, or whose name ends with one of suffixes.
 #
-# RETURNS:
-#   (list[str]) - full paths of every matching file, in os.walk()'s
-#   natural (unsorted) order. Empty list if nothing matched.
+# PROCESS OVERVIEW
+#     1. Normalize names to a set (empty if None) and suffixes to a tuple
+#        (empty if None).
+#     2. Walk the tree under root via walk().
+#     3. For each file encountered, check whether its filename is an
+#        exact match in names, or ends with one of suffixes.
+#     4. Collect the full path of every match into a list.
+#     5. Return the collected list.
 #
-# RAISES/ERRORS:  None expected beyond what walk() can raise.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      Nearly every scan_* function in this file and in
-#                 dead_weight_scan.py.
-# CALLS:          walk().
+# IMPORTANT DETAILS
+#     - A suffix match uses str.endswith(), so a suffix like
+#       "requirements.txt" matches "requirements.txt" but also
+#       "dev-requirements.txt", not only a true file extension.
+#     - Results are returned in os.walk()'s natural (unsorted) order.
 #
-# EXAMPLE:
-#   find_files(root, names={"Gemfile"})
-#   -> ["/repo/Gemfile"]
-#   find_files(root, suffixes=(".csproj",))
-#   -> ["/repo/src/App.csproj", "/repo/tests/App.Tests.csproj"]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Directory to search under.
+#     names (iterable[str] or None)
+#         Exact filenames to match, e.g. {"package.json"}. Treated as an
+#         empty set if None.
+#     suffixes (iterable[str] or None)
+#         Filename suffixes to match, e.g. (".csproj",) or
+#         ("requirements.txt",). Treated as an empty tuple if None.
+#
+# RETURNS
+#     list[str]
+#         Full paths of every matching file. Empty list if nothing
+#         matched.
+#
+# FAILURE CASES
+#     - None expected beyond whatever walk() can raise.
+################################################################################
 def find_files(root, names=None, suffixes=None):
     """Finds every file under root (via walk(), so EXCLUDE_DIRS is already
     pruned) whose filename is an exact match in `names` or ends with one
@@ -314,106 +362,148 @@ def find_files(root, names=None, suffixes=None):
 
 # --- scc / fallback LOC -----------------------------------------------
 
-# ------------------------------------------------------------------------
-# run_scc
+# `scc` itself is fast, but a very large monorepo (millions of lines) can
+# still take a while to scan. This caps the worst case instead of letting
+# one slow `scc` invocation hang the entire cartridge scan forever.
+SCC_TIMEOUT_SECONDS = 180
+
+################################################################################
+# FUNCTION: run_scc
 #
-# WHAT IT DOES:   Shells out to the external `scc` command-line tool to
-#                 get accurate lines-of-code and language statistics.
-# WHY IT EXISTS:  Writing a correct per-language LOC/comment/complexity
-#                 counter from scratch is a large, language-specific
-#                 undertaking that `scc` already solves well; this
-#                 function just calls it and normalizes its output.
+# PURPOSE
+#     Gets accurate lines-of-code and language statistics by shelling out
+#     to the external `scc` command-line tool, instead of reimplementing
+#     a per-language LOC/comment/complexity counter from scratch.
 #
-# INPUTS:
-#   root (str) - directory to scan.
+# RESPONSIBILITIES
+#     - Run the `scc` binary against the given directory.
+#     - Parse its JSON output.
+#     - Normalize its PascalCase keys into this project's snake_case
+#       schema.
 #
-# RETURNS:
-#   (list[dict] or None) - one dict per language with keys name, files,
-#   lines, code, comment, blank, complexity, or None if `scc` isn't
-#   installed, times out, exits non-zero, or produces output that isn't
-#   valid JSON. Callers must fall back to fallback_loc_scan() when this
-#   returns None.
+# PROCESS OVERVIEW
+#     1. Run `scc --format json <root>` as a subprocess, capturing its
+#        output and bounding its run time.
+#     2. If the binary is missing or the run times out, return None.
+#     3. If the process exits non-zero, return None.
+#     4. Parse its stdout as JSON.
+#     5. If that JSON is invalid, return None.
+#     6. Convert each entry's PascalCase fields (Name, Count, Lines,
+#        Code, Comment, Blank, Complexity) into this project's
+#        snake_case schema.
+#     7. Return the list of normalized per-language entries.
 #
-# RAISES/ERRORS:  Never raises; OSError (binary not found) and
-#                 subprocess.TimeoutExpired are both caught and turned
-#                 into a None return.
-# SIDE EFFECTS:   Spawns a child process. Reads (but never writes to)
-#                 the filesystem under root, via the external tool.
-# CALLED BY:      main().
-# CALLS:          subprocess.run(["scc", ...]).
+# IMPORTANT DETAILS
+#     - Spawns a child process (`scc`) and, through it, reads the
+#       filesystem under root; it never writes anything.
+#     - Callers must fall back to fallback_loc_scan() whenever this
+#       function returns None, since that is the only signal that `scc`
+#       wasn't usable.
 #
-# EXAMPLE:
-#   run_scc("/repo")
-#   -> [{"name": "Python", "files": 12, "lines": 900, "code": 700,
-#        "comment": 120, "blank": 80, "complexity": 45}, ...]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Directory to scan.
+#
+# RETURNS
+#     list[dict] or None
+#         One dict per language with keys name, files, lines, code,
+#         comment, blank, complexity. None if `scc` isn't installed,
+#         times out, exits non-zero, or produces output that isn't valid
+#         JSON.
+#
+# FAILURE CASES
+#     - `scc` binary not found: returns None.
+#     - `scc` run exceeds SCC_TIMEOUT_SECONDS: returns None.
+#     - `scc` exits non-zero: returns None.
+#     - `scc`'s stdout isn't valid JSON: returns None.
+################################################################################
 def run_scc(root):
     """Shells out to the `scc` CLI for language/LOC stats. Returns a list
     of per-language dicts, or None if `scc` isn't installed, times out, or
     exits non-zero, the caller falls back to fallback_loc_scan() in that
     case."""
     try:
-        proc = subprocess.run(
-            # 180s: `scc` is fast, but a very large monorepo (millions of
-            # lines) can still take a while; this caps worst-case scan
-            # time instead of hanging the whole cartridge scan forever.
+        scc_process = subprocess.run(
             ["scc", "--format", "json", root],
-            capture_output=True, text=True, timeout=180,
+            capture_output=True, text=True, timeout=SCC_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
-    if proc.returncode != 0:
+
+    if scc_process.returncode != 0:
         return None
+
     try:
-        raw_entries = json.loads(proc.stdout)
+        raw_language_entries = json.loads(scc_process.stdout)
     except ValueError:
         return None
-    languages = []
-    for entry in raw_entries:
+
+    normalized_language_entries = []
+    for raw_entry in raw_language_entries:
         # scc's JSON keys are PascalCase; normalize to our snake_case schema.
-        languages.append({
-            "name": entry.get("Name"),
-            "files": entry.get("Count", 0),
-            "lines": entry.get("Lines", 0),
-            "code": entry.get("Code", 0),
-            "comment": entry.get("Comment", 0),
-            "blank": entry.get("Blank", 0),
-            "complexity": entry.get("Complexity", 0),
+        normalized_language_entries.append({
+            "name": raw_entry.get("Name"),
+            "files": raw_entry.get("Count", 0),
+            "lines": raw_entry.get("Lines", 0),
+            "code": raw_entry.get("Code", 0),
+            "comment": raw_entry.get("Comment", 0),
+            "blank": raw_entry.get("Blank", 0),
+            "complexity": raw_entry.get("Complexity", 0),
         })
-    return languages
+    return normalized_language_entries
 
 
-# ------------------------------------------------------------------------
-# fallback_loc_scan
+################################################################################
+# FUNCTION: fallback_loc_scan
 #
-# WHAT IT DOES:   Manually counts files and total lines per language when
-#                 the external `scc` tool isn't available.
-# WHY IT EXISTS:  So the scan still produces a non-empty, useful language
-#                 breakdown even on a machine without `scc` installed,
-#                 at the cost of losing the comment/blank/complexity
-#                 split (that needs a real per-language tokenizer, which
-#                 this deliberately does not attempt to be).
+# PURPOSE
+#     Produces a non-empty, useful language breakdown even on a machine
+#     without the external `scc` tool installed, by manually counting
+#     files and lines per language.
 #
-# INPUTS:
-#   root (str) - directory to scan.
+# RESPONSIBILITIES
+#     - Walk the tree under root.
+#     - Recognize each file's language from its extension, via
+#       FALLBACK_EXT_LANG.
+#     - Count files and total lines per recognized language.
 #
-# RETURNS:
-#   (list[dict]) - one dict per language found (only languages in
-#   FALLBACK_EXT_LANG are counted), with keys name, files, lines, and
-#   code/comment/blank/complexity always 0. Empty list if no recognized
-#   source files exist under root.
+# PROCESS OVERVIEW
+#     1. Walk the tree under root.
+#     2. For each file, look up its language by extension in
+#        FALLBACK_EXT_LANG; skip the file if its extension isn't
+#        recognized.
+#     3. Read the file's text.
+#     4. Skip the file if it has non-empty size but produced no readable
+#        text (unreadable or binary).
+#     5. Increment that language's file count.
+#     6. Count the file's lines and add them to that language's line
+#        count.
+#     7. Return one entry per language encountered.
 #
-# RAISES/ERRORS:  None expected; per-file read failures are absorbed by
-#                 read_text() returning "".
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      main(), only when run_scc() returns None.
-# CALLS:          walk(), read_text().
+# IMPORTANT DETAILS
+#     - This is a deliberately rough count: it loses the
+#       comment/blank/complexity split that `scc` provides, since a
+#       correct version of that split needs a real per-language
+#       tokenizer, which this function does not attempt to be.
+#     - A file with content but no trailing newline still has one more
+#       line than the number of "\n" characters in it; the line count
+#       accounts for that final, unterminated line explicitly.
 #
-# EXAMPLE:
-#   fallback_loc_scan("/repo")
-#   -> [{"name": "Python", "files": 12, "lines": 950, "code": 0,
-#        "comment": 0, "blank": 0, "complexity": 0}]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Directory to scan.
+#
+# RETURNS
+#     list[dict]
+#         One dict per language found (only languages in
+#         FALLBACK_EXT_LANG are counted), with keys name, files, lines,
+#         and code/comment/blank/complexity always 0. Empty list if no
+#         recognized source files exist under root.
+#
+# FAILURE CASES
+#     - None expected; per-file read failures are absorbed by
+#       read_text() returning "".
+################################################################################
 def fallback_loc_scan(root):
     """Rough manual LOC count used only when `scc` isn't available: files
     and total line count per language in FALLBACK_EXT_LANG. No
@@ -421,53 +511,64 @@ def fallback_loc_scan(root):
     languages_by_name = {}
     for dirpath, _dirnames, filenames in walk(root):
         for filename in filenames:
-            ext = os.path.splitext(filename)[1].lower()
-            language = FALLBACK_EXT_LANG.get(ext)
+            file_extension = os.path.splitext(filename)[1].lower()
+            language = FALLBACK_EXT_LANG.get(file_extension)
             if not language:
                 continue
-            path = os.path.join(dirpath, filename)
-            text = read_text(path)
-            if not text and os.path.getsize(path) > 0:
+
+            file_path = os.path.join(dirpath, filename)
+            file_text = read_text(file_path)
+            if not file_text and os.path.getsize(file_path) > 0:
                 continue  # unreadable/binary
-            entry = languages_by_name.setdefault(language, {
+
+            language_entry = languages_by_name.setdefault(language, {
                 "name": language, "files": 0, "lines": 0,
                 "code": 0, "comment": 0, "blank": 0, "complexity": 0,
             })
-            entry["files"] += 1
-            # A file with content but no trailing newline still has one
-            # more line than the number of "\n" characters in it, this
-            # +1 accounts for that final, unterminated line.
-            entry["lines"] += text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+            language_entry["files"] += 1
+
+            line_count = file_text.count("\n")
+            file_has_unterminated_final_line = file_text and not file_text.endswith("\n")
+            if file_has_unterminated_final_line:
+                line_count += 1
+            language_entry["lines"] += line_count
     return list(languages_by_name.values())
 
 
-# ------------------------------------------------------------------------
-# totals_of
+################################################################################
+# FUNCTION: totals_of
 #
-# WHAT IT DOES:   Adds up the files/lines/code/comment/blank fields across
-#                 every language entry into one overall total.
-# WHY IT EXISTS:  The final JSON report includes both a per-language
-#                 breakdown and a single repo-wide total; this is the one
-#                 place that sums them, so the two can never drift apart.
+# PURPOSE
+#     Provides the single place that sums per-language stats into one
+#     repo-wide total, so the per-language breakdown and the total in the
+#     final report can never drift apart from being computed twice.
 #
-# INPUTS:
-#   languages (list[dict]) - output of run_scc() or fallback_loc_scan().
+# RESPONSIBILITIES
+#     - Add up the files, lines, code, comment, and blank fields across
+#       every language entry.
 #
-# RETURNS:
-#   (dict) - {"files", "lines", "code", "comment", "blank"} summed across
-#   all entries. All zero if languages is empty.
+# PROCESS OVERVIEW
+#     1. Start a totals dict with each field at zero.
+#     2. For each language entry, add its value for each field into the
+#        running totals.
+#     3. Return the totals dict.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      main().
-# CALLS:          None (pure aggregation).
+# IMPORTANT DETAILS
+#     - Pure aggregation; does not read the "complexity" field, since
+#       that is not summed anywhere in the final report.
 #
-# EXAMPLE:
-#   totals_of([{"files": 2, "lines": 10, "code": 8, "comment": 1,
-#               "blank": 1}, {"files": 1, "lines": 5, "code": 5,
-#               "comment": 0, "blank": 0}])
-#   -> {"files": 3, "lines": 15, "code": 13, "comment": 1, "blank": 1}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     languages (list[dict])
+#         Output of run_scc() or fallback_loc_scan().
+#
+# RETURNS
+#     dict
+#         {"files", "lines", "code", "comment", "blank"} summed across
+#         all entries. All zero if languages is empty.
+#
+# FAILURE CASES
+#     - None.
+################################################################################
 def totals_of(languages):
     """Sums the files/lines/code/comment/blank fields across every
     language entry (from run_scc() or fallback_loc_scan()) into one dict."""
@@ -480,39 +581,53 @@ def totals_of(languages):
 
 # --- generic helpers for manifest/lockfile parsing ---------------------
 
-# ------------------------------------------------------------------------
-# toml_section_lines
+################################################################################
+# FUNCTION: toml_section_lines
 #
-# WHAT IT DOES:   Pulls out the raw lines that belong to one named TOML
-#                 table (a `[section.name]` block), stopping at the next
-#                 `[...]` header.
-# WHY IT EXISTS:  Several ecosystems (Python's Poetry, Rust's Cargo,
-#                 C/C++'s Conan) declare dependencies inside a specific
-#                 TOML table. Pulling in the full TOML spec (arrays of
-#                 tables, inline tables, multi-line strings, etc.) is
-#                 overkill just to hand a table's body to
-#                 count_key_value_lines(); this does the one thing those
-#                 callers actually need.
+# PURPOSE
+#     Gives every TOML-based ecosystem (Python's Poetry, Rust's Cargo,
+#     C/C++'s Conan) a shared way to pull out one table's body, without
+#     needing a full TOML parser just to hand that body to
+#     count_key_value_lines().
 #
-# INPUTS:
-#   text (str) - full file contents of a TOML file.
-#   header (str) - the table name to extract, without brackets, e.g.
-#     "tool.poetry.dependencies".
+# RESPONSIBILITIES
+#     - Split the file's text into lines.
+#     - Track which named table the current line belongs to.
+#     - Collect every line that belongs to the requested table.
 #
-# RETURNS:
-#   (list[str]) - the raw (unstripped) lines inside that table. Empty
-#   list if the table doesn't exist in text.
+# PROCESS OVERVIEW
+#     1. Split text into individual lines.
+#     2. For each line, check whether it is a `[...]` table header.
+#     3. If it is a header, note whether it matches the requested
+#        header, and move to the next line without collecting the header
+#        line itself.
+#     4. If it is not a header and the current table is the requested
+#        one, collect the line as-is.
+#     5. Return the collected lines.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_python(), scan_rust(), scan_cpp() (all via
-#                 count_key_value_lines()).
-# CALLS:          str.splitlines().
+# IMPORTANT DETAILS
+#     - This is a heuristic line scanner, not a real TOML parser: it does
+#       not understand arrays of tables, inline tables, or multi-line
+#       strings. It is deliberately narrow, built only to extract a
+#       table's body for count_key_value_lines().
+#     - Lines are returned unstripped (leading/trailing whitespace kept
+#       as-is); trimming, if needed, is the caller's job.
 #
-# EXAMPLE:
-#   text = "[dependencies]\\nserde = \\"1.0\\"\\n\\n[dev-dependencies]\\n..."
-#   toml_section_lines(text, "dependencies") -> ['serde = "1.0"']
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     text (str)
+#         Full file contents of a TOML file.
+#     header (str)
+#         The table name to extract, without brackets, e.g.
+#         "tool.poetry.dependencies".
+#
+# RETURNS
+#     list[str]
+#         The raw (unstripped) lines inside that table. Empty list if the
+#         table doesn't exist in text.
+#
+# FAILURE CASES
+#     - None.
+################################################################################
 def toml_section_lines(text, header):
     """Returns the raw lines belonging to a `[header]` TOML table, up to
     (not including) the next `[...]` table header. Not a real TOML parser,
@@ -530,38 +645,50 @@ def toml_section_lines(text, header):
     return section_lines
 
 
-# ------------------------------------------------------------------------
-# count_key_value_lines
+################################################################################
+# FUNCTION: count_key_value_lines
 #
-# WHAT IT DOES:   Counts how many `key = value` lines appear in a list of
-#                 lines (typically a TOML table's body), skipping blanks,
-#                 comments, and specific keys the caller wants excluded.
-# WHY IT EXISTS:  This is the shared "how many dependencies are declared
-#                 in this table" counter used by every TOML-based
-#                 ecosystem (Poetry, Cargo, Conan), so the counting rule
-#                 (what counts as a dependency line) only has to be
-#                 written once.
+# PURPOSE
+#     Provides the one shared "how many dependencies are declared in this
+#     table" counter used by every TOML-based ecosystem (Poetry, Cargo,
+#     Conan), so the rule for what counts as a dependency line only has
+#     to be written once.
 #
-# INPUTS:
-#   lines (list[str]) - lines to scan, as produced by toml_section_lines().
-#   exclude_keys (iterable[str]) - key names to not count even though
-#     they match the pattern, e.g. {"python"} for Poetry's Python version
-#     constraint, which lives in the same table as real dependencies but
-#     isn't one.
+# RESPONSIBILITIES
+#     - Recognize which lines look like a `key = value` declaration.
+#     - Skip blank lines and comment lines.
+#     - Skip any key explicitly named in exclude_keys.
+#     - Count everything else.
 #
-# RETURNS:
-#   (int) - number of matching, non-excluded key/value lines.
+# PROCESS OVERVIEW
+#     1. For each line, skip it if it is blank or starts with "#".
+#     2. Check whether the line matches a bare or quoted key followed by
+#        "=".
+#     3. If it matches and the key isn't in exclude_keys, count it.
+#     4. Return the total count.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   None.
-# CALLED BY:      scan_python(), scan_rust(), scan_cpp().
-# CALLS:          re.match().
+# IMPORTANT DETAILS
+#     - This is a heuristic line scanner, not a real TOML parser: it does
+#       not match a continuation line of a multi-line value, or a line
+#       that starts with the value instead of a key.
+#     - exclude_keys exists because a table can hold one non-dependency
+#       key alongside real dependencies, e.g. Poetry's Python version
+#       constraint (`python = "^3.10"`) lives in the same table as its
+#       real dependencies but isn't one.
 #
-# EXAMPLE:
-#   count_key_value_lines(['python = "^3.10"', 'flask = "2.0"'],
-#                          exclude_keys={"python"})
-#   -> 1
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     lines (list[str])
+#         Lines to scan, as produced by toml_section_lines().
+#     exclude_keys (iterable[str])
+#         Key names to not count even though they match the pattern.
+#
+# RETURNS
+#     int
+#         Number of matching, non-excluded key/value lines.
+#
+# FAILURE CASES
+#     - None.
+################################################################################
 def count_key_value_lines(lines, exclude_keys=()):
     """Counts `key = value` lines (as produced by toml_section_lines()),
     skipping blanks, comments, and any key named in exclude_keys."""
@@ -581,32 +708,38 @@ def count_key_value_lines(lines, exclude_keys=()):
     return count
 
 
-# ------------------------------------------------------------------------
-# host_of
+################################################################################
+# FUNCTION: host_of
 #
-# WHAT IT DOES:   Extracts just the hostname portion out of a URL string.
-# WHY IT EXISTS:  Every private-registry check in this file needs to
-#                 compare "what host is this URL pointing at" against a
-#                 known-good set of default hosts; this is the one place
-#                 that does the URL parsing, so a bad/unparseable URL is
-#                 handled consistently everywhere.
+# PURPOSE
+#     Gives every private-registry check in this file a single place
+#     that extracts a URL's hostname, so a bad or unparseable URL is
+#     handled the same way everywhere instead of once per caller.
 #
-# INPUTS:
-#   url (str) - a URL string, e.g. from a manifest's registry field.
+# RESPONSIBILITIES
+#     - Parse the given string as a URL.
+#     - Return just its hostname.
 #
-# RETURNS:
-#   (str or None) - the hostname (e.g. "registry.npmjs.org"), or None if
-#   url isn't parseable as a URL at all.
+# PROCESS OVERVIEW
+#     1. Parse url with urlparse().
+#     2. Return its hostname attribute.
+#     3. If parsing raises, return None instead.
 #
-# RAISES/ERRORS:  Never raises; urlparse's ValueError is caught.
-# SIDE EFFECTS:   None.
-# CALLED BY:      add_if_private().
-# CALLS:          urllib.parse.urlparse().
+# IMPORTANT DETAILS
+#     - None.
 #
-# EXAMPLE:
-#   host_of("https://registry.npmjs.org/left-pad") -> "registry.npmjs.org"
-#   host_of("not a url")                            -> None
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     url (str)
+#         A URL string, e.g. from a manifest's registry field.
+#
+# RETURNS
+#     str or None
+#         The hostname (e.g. "registry.npmjs.org"), or None if url isn't
+#         parseable as a URL at all.
+#
+# FAILURE CASES
+#     - url isn't parseable as a URL: returns None instead of raising.
+################################################################################
 def host_of(url):
     """Extracts the hostname from a URL string. Returns None for anything
     unparseable rather than raising."""
@@ -616,47 +749,57 @@ def host_of(url):
         return None
 
 
-# ------------------------------------------------------------------------
-# add_if_private
+################################################################################
+# FUNCTION: add_if_private
 #
-# WHAT IT DOES:   Records a "private/internal registry" finding, but only
-#                 if the URL's host isn't one of the ecosystem's known
-#                 public defaults.
-# WHY IT EXISTS:  Every scan_* function needs to make this same decision
-#                 (public default vs. private registry) whenever it finds
-#                 a registry/source/index URL in a manifest. Routing them
-#                 all through one function means the "is this actually
-#                 private" logic and the shape of the recorded finding
-#                 only exist in one place.
+# PURPOSE
+#     Gives every scan_* function the same single decision point for
+#     "is this registry URL actually private," so that logic and the
+#     shape of the recorded finding only exist in one place.
 #
-# INPUTS:
-#   private_registries (list) - the caller's accumulator list; this
-#     function appends to it in place (no return value).
-#   ecosystem (str) - ecosystem key for the finding, e.g. "javascript".
-#   url (str) - the registry/source URL found in a manifest.
-#   source_file (str) - path of the manifest the URL came from, for the
-#     report to point back to.
-#   default_hosts (set[str]) - hosts considered "public default" for this
-#     ecosystem, from DEFAULT_REGISTRY_HOSTS (or an empty set() when the
-#     caller has no concept of a default, see scan_go()).
+# RESPONSIBILITIES
+#     - Extract the URL's host.
+#     - Compare it against the ecosystem's known public default hosts.
+#     - Record a finding in the caller's accumulator list only when the
+#       host is not a known default.
 #
-# RETURNS:
-#   (None) - mutates private_registries in place instead.
+# PROCESS OVERVIEW
+#     1. Extract the host from url via host_of().
+#     2. If the host couldn't be parsed, or matches one of
+#        default_hosts, do nothing.
+#     3. Otherwise, append a finding describing the ecosystem, host, url,
+#        and source_file to private_registries.
 #
-# RAISES/ERRORS:  None.
-# SIDE EFFECTS:   Appends to private_registries when url's host is
-#                 private. No-op otherwise.
-# CALLED BY:      Every scan_* function that checks for private registries
-#                 (scan_javascript, scan_python, scan_go, scan_java,
-#                 scan_ruby, scan_php, scan_rust, scan_dotnet).
-# CALLS:          host_of().
+# IMPORTANT DETAILS
+#     - private_registries is mutated in place; this function has no
+#       return value, since the accumulator itself is the output.
+#     - default_hosts can be an empty set for an ecosystem with no
+#       concept of a single public default host (see scan_go()), in
+#       which case every parseable host is treated as private.
 #
-# EXAMPLE:
-#   add_if_private(private_registries, "pip",
-#                   "https://pkgs.mycorp.internal/simple/", "requirements.txt",
-#                   {"pypi.org", "files.pythonhosted.org"})
-#   # appends {"ecosystem": "pip", "host": "pkgs.mycorp.internal", ...}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     private_registries (list)
+#         The caller's accumulator list; appended to in place.
+#     ecosystem (str)
+#         Ecosystem key for the finding, e.g. "javascript".
+#     url (str)
+#         The registry/source URL found in a manifest.
+#     source_file (str)
+#         Path of the manifest the URL came from, for the report to
+#         point back to.
+#     default_hosts (set[str])
+#         Hosts considered "public default" for this ecosystem, from
+#         DEFAULT_REGISTRY_HOSTS (or an empty set when the caller has no
+#         concept of a default).
+#
+# RETURNS
+#     None
+#         Mutates private_registries in place instead of returning.
+#
+# FAILURE CASES
+#     - url's host can't be parsed: no finding is recorded.
+#     - url's host matches a known default: no finding is recorded.
+################################################################################
 def add_if_private(private_registries, ecosystem, url, source_file, default_hosts):
     """Appends a private-registry entry if url's host isn't one of
     default_hosts for this ecosystem. No-op if the host matches a default
@@ -670,41 +813,141 @@ def add_if_private(private_registries, ecosystem, url, source_file, default_host
 
 # --- per-ecosystem package manager inventory ----------------------------
 
-# ------------------------------------------------------------------------
-# scan_javascript
+################################################################################
+# FUNCTION: count_nested_lockfile_dependencies
 #
-# WHAT IT DOES:   Finds JavaScript/npm-ecosystem manifests and lockfiles,
-#                 counts how many dependencies are declared vs. actually
-#                 resolved, and flags any non-default registry.
-# WHY IT EXISTS:  npm, yarn, and pnpm each use a different lockfile format
-#                 with a different way of counting resolved packages;
-#                 this function is where that format-specific logic lives
-#                 for the JavaScript ecosystem specifically.
+# PURPOSE
+#     Counts every package entry in an npm v1 lockfile's nested
+#     "dependencies" tree, where a resolved package can have its own
+#     nested "dependencies" sub-tree for transitive dependencies that
+#     needed a different version than the top-level resolution.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator this function appends one entry
-#     to (in place) if any npm-family manifest/lockfile exists.
-#   private_registries (list) - accumulator passed through to
-#     add_if_private().
+# RESPONSIBILITIES
+#     - Count every direct entry in the given dependencies map.
+#     - Recurse into each entry's own nested "dependencies" sub-map, if
+#       it has one, and add that count too.
 #
-# RETURNS:
-#   (None) - results are appended to package_managers/private_registries
-#   in place; nothing is returned directly.
+# PROCESS OVERVIEW
+#     1. Start a running count at zero.
+#     2. For each entry in the dependencies map, add one to the count.
+#     3. If that entry itself has a nested "dependencies" sub-map,
+#        recursively count it and add that to the running count.
+#     4. Return the running count.
 #
-# RAISES/ERRORS:  None expected; malformed JSON/lockfiles just leave the
-#                 corresponding count as None.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_json(), read_text(), add_if_private().
+# IMPORTANT DETAILS
+#     - This mirrors the nested shape of an npm v1 package-lock.json:
+#       each resolved package's entry can itself contain a
+#       "dependencies" key holding transitive dependencies that were
+#       resolved to a different version and therefore needed their own
+#       nested copy.
 #
-# EXAMPLE:
-#   scan_javascript("/repo", package_managers, private_registries)
-#   # package_managers gains one entry like:
-#   # {"ecosystem": "javascript", "manifest_files": [...],
-#   #  "lockfile_files": [...], "declared_dependencies": 40,
-#   #  "resolved_dependencies": 612}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     dependencies_map (dict)
+#         A "dependencies" map from an npm v1 lockfile, or a nested
+#         sub-map of the same shape.
+#
+# RETURNS
+#     int
+#         Total count of this map's entries plus every entry in every
+#         nested sub-map.
+#
+# FAILURE CASES
+#     - None expected; called only with dict values already confirmed by
+#       the caller.
+################################################################################
+def count_nested_lockfile_dependencies(dependencies_map):
+    nested_dependency_count = 0
+    for dependency_entry in dependencies_map.values():
+        nested_dependency_count += 1
+        entry_has_nested_dependencies = (
+            isinstance(dependency_entry, dict)
+            and isinstance(dependency_entry.get("dependencies"), dict)
+        )
+        if entry_has_nested_dependencies:
+            nested_dependency_count += count_nested_lockfile_dependencies(dependency_entry["dependencies"])
+    return nested_dependency_count
+
+
+################################################################################
+# FUNCTION: scan_javascript
+#
+# PURPOSE
+#     Inventories the JavaScript/npm ecosystem's dependencies: how many
+#     are declared vs. actually resolved, and whether any non-default
+#     registry is in use. npm, yarn, and pnpm each use a different
+#     lockfile format with a different way of counting resolved
+#     packages, so this function is where that format-specific logic
+#     lives for the JavaScript ecosystem specifically.
+#
+# RESPONSIBILITIES
+#     - Find package.json manifests and package-lock.json/yarn.lock/
+#       pnpm-lock.yaml lockfiles.
+#     - Count declared dependencies from the first package.json found.
+#     - Count resolved dependencies from whichever lockfile format is
+#       present.
+#     - Flag any non-default registry found in package.json or .npmrc.
+#     - Append one summary entry to package_managers if any npm-family
+#       manifest or lockfile exists.
+#
+# PROCESS OVERVIEW
+#     1. Find all package.json manifests and all npm-family lockfiles.
+#     2. If neither exists, return without recording anything.
+#     3. From the first package.json, sum the dependencies,
+#        devDependencies, peerDependencies, and optionalDependencies
+#        entries into a declared count, and check its publishConfig
+#        registry for a private registry.
+#     4. For each lockfile found, count resolved dependencies using the
+#        counting rule for that specific lockfile format, stopping at
+#        the first lockfile that produces a usable count.
+#     5. Check every .npmrc file for a registry line pointing at a
+#        private registry.
+#     6. Append one summary entry describing all of the above to
+#        package_managers.
+#
+# IMPORTANT DETAILS
+#     - Only the first package.json's declared count is used. A monorepo
+#       with several package.json files would otherwise have their
+#       dependency counts summed together, mixing unrelated workspaces.
+#     - package-lock.json v2/v3 format uses a flat "packages" map with
+#       one entry per resolved package, plus one entry keyed "" for the
+#       root project itself, which must be excluded from the count.
+#     - package-lock.json v1 format uses a nested "dependencies" tree
+#       instead, counted recursively via
+#       count_nested_lockfile_dependencies().
+#     - yarn.lock has no JSON/YAML structure of its own; each resolved
+#       package is a block whose header line starts at column 0 and
+#       ends with ":". A matching header line looks like
+#       "left-pad@^1.0.0:"; an indented body line like '  version
+#       "1.3.0"' does not match.
+#     - pnpm-lock.yaml is real YAML, but this function does not parse it
+#       as YAML; it matches a 2-space-indented package key ending in ":"
+#       with nothing else on the line, e.g. "  /left-pad@1.3.0:", while
+#       deeper-indented fields inside that package's block (e.g.
+#       "    resolution:") do not match.
+#     - If more than one npm-family lockfile is present (unusual, but
+#       possible), only the first one with a usable count is treated as
+#       authoritative for "what's actually installed."
+#
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator this function appends one entry to, in place, if
+#         any npm-family manifest/lockfile exists.
+#     private_registries (list)
+#         Accumulator passed through to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place; nothing is returned directly.
+#
+# FAILURE CASES
+#     - No package.json and no npm-family lockfile found: returns without
+#       recording anything.
+#     - A manifest or lockfile that can't be parsed as expected simply
+#       leaves the corresponding count as None; it does not raise.
+################################################################################
 def scan_javascript(root, package_managers, private_registries):
     """JavaScript, via npm/yarn/pnpm: declared count from package.json,
     resolved count from whichever lockfile is present (format differs by
@@ -715,14 +958,15 @@ def scan_javascript(root, package_managers, private_registries):
     lockfiles = find_files(root, names={"package-lock.json", "yarn.lock", "pnpm-lock.yaml"})
     if not manifests and not lockfiles:
         return
+
     declared_count = None
     for manifest in manifests:
-        data = read_json(manifest)
-        if not isinstance(data, dict):
+        package_json_contents = read_json(manifest)
+        if not isinstance(package_json_contents, dict):
             continue
-        declared_count = sum(len(data.get(key) or {}) for key in
+        declared_count = sum(len(package_json_contents.get(key) or {}) for key in
                               ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"))
-        publish_registry = (data.get("publishConfig") or {}).get("registry")
+        publish_registry = (package_json_contents.get("publishConfig") or {}).get("registry")
         if publish_registry:
             add_if_private(private_registries, "javascript", publish_registry, manifest,
                             DEFAULT_REGISTRY_HOSTS["javascript"])
@@ -730,101 +974,122 @@ def scan_javascript(root, package_managers, private_registries):
         # monorepo with several package.json files would otherwise sum
         # unrelated workspaces together); `break` stops after it.
         break
+
     resolved_count = None
     for lockfile in lockfiles:
         filename = os.path.basename(lockfile)
-        text = read_text(lockfile)
+        lockfile_text = read_text(lockfile)
+
         if filename == "package-lock.json":
-            data = read_json(lockfile)
-            if isinstance(data, dict) and isinstance(data.get("packages"), dict):
+            package_lock_json_contents = read_json(lockfile)
+            has_v2_or_v3_packages_map = (
+                isinstance(package_lock_json_contents, dict)
+                and isinstance(package_lock_json_contents.get("packages"), dict)
+            )
+            has_v1_dependencies_tree = (
+                isinstance(package_lock_json_contents, dict)
+                and isinstance(package_lock_json_contents.get("dependencies"), dict)
+            )
+            if has_v2_or_v3_packages_map:
                 # v2/v3 lockfile: flat "packages" map, one entry per resolved
                 # package plus a "" entry for the root project itself.
-                resolved_count = len(data["packages"]) - (1 if "" in data["packages"] else 0)
-            elif isinstance(data, dict) and isinstance(data.get("dependencies"), dict):
+                resolved_packages = package_lock_json_contents["packages"]
+                root_project_entry_is_present = "" in resolved_packages
+                resolved_count = len(resolved_packages)
+                if root_project_entry_is_present:
+                    resolved_count -= 1
+            elif has_v1_dependencies_tree:
                 # v1 lockfile: nested "dependencies" tree, walk it recursively.
-                def count_nested_deps(deps):
-                    # ----------------------------------------------------
-                    # count_nested_deps
-                    # WHAT IT DOES: Recursively counts every package
-                    #   entry in an npm v1 lockfile's nested
-                    #   "dependencies" tree (each resolved package can
-                    #   have its own "dependencies" sub-tree for
-                    #   transitive deps that needed a different version).
-                    # INPUTS: deps (dict) - a "dependencies" map from the
-                    #   lockfile (or a nested sub-map).
-                    # RETURNS: (int) - total count of this map's entries
-                    #   plus every entry in every nested sub-map.
-                    # CALLED BY: scan_javascript(), and itself (recursion).
-                    # ----------------------------------------------------
-                    count = 0
-                    for value in deps.values():
-                        count += 1
-                        if isinstance(value, dict) and isinstance(value.get("dependencies"), dict):
-                            count += count_nested_deps(value["dependencies"])
-                    return count
-                resolved_count = count_nested_deps(data["dependencies"])
+                resolved_count = count_nested_lockfile_dependencies(
+                    package_lock_json_contents["dependencies"])
+
         elif filename == "yarn.lock":
             # yarn.lock entries are blocks whose header line starts at
             # column 0 and ends with ":", one block per resolved package.
             # Matches e.g. `left-pad@^1.0.0:` at line start; does NOT
             # match indented body lines like `  version "1.3.0"`.
-            resolved_count = sum(1 for line in text.splitlines()
-                                  if line and not line[0].isspace() and line.rstrip().endswith(":")
-                                  and not line.startswith("#")) or None
+            resolved_package_count = 0
+            for line in lockfile_text.splitlines():
+                line_is_unindented = bool(line) and not line[0].isspace()
+                line_looks_like_package_header = (
+                    line_is_unindented
+                    and line.rstrip().endswith(":")
+                    and not line.startswith("#")
+                )
+                if line_looks_like_package_header:
+                    resolved_package_count += 1
+            resolved_count = resolved_package_count or None
+
         elif filename == "pnpm-lock.yaml":
             # Matches a 2-space-indented package key ending in ":" with
             # nothing else on the line, e.g. "  /left-pad@1.3.0:". Does
             # NOT match deeper-indented fields inside that package's
             # block (e.g. "    resolution:").
-            resolved_count = len(re.findall(r"^\s{2}[^\s#][^:]*:\s*$", text, re.MULTILINE)) or None
+            resolved_count = len(re.findall(
+                r"^\s{2}[^\s#][^:]*:\s*$", lockfile_text, re.MULTILINE)) or None
+
         if resolved_count is not None:
             # First lockfile with a usable count wins; a repo shouldn't
             # have more than one npm-family lockfile, but if it does,
             # only one is authoritative for "what's actually installed."
             break
+
     for npmrc_file in find_files(root, names={".npmrc"}):
-        text = read_text(npmrc_file)
+        npmrc_text = read_text(npmrc_file)
         # Matches `registry=URL` or a scoped `@myorg:registry=URL` line.
-        for match in re.finditer(r"^(?:@[\w-]+:)?registry\s*=\s*(\S+)", text, re.MULTILINE):
+        for match in re.finditer(r"^(?:@[\w-]+:)?registry\s*=\s*(\S+)", npmrc_text, re.MULTILINE):
             add_if_private(private_registries, "javascript", match.group(1), npmrc_file,
                             DEFAULT_REGISTRY_HOSTS["javascript"])
+
     package_managers.append({"ecosystem": "javascript", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# install_requires_from_setup_cfg
+################################################################################
+# FUNCTION: install_requires_from_setup_cfg
 #
-# WHAT IT DOES:   Reads the install_requires list out of a setup.cfg
-#                 file's [options] section.
-# WHY IT EXISTS:  setup.cfg is genuine INI-format, so the standard
-#                 library's configparser can correctly join a multi-line
-#                 install_requires value without any custom parsing code.
+# PURPOSE
+#     Reads the install_requires dependency list out of a setup.cfg
+#     file's [options] section, one of several places a Python project
+#     can declare its dependencies.
 #
-# INPUTS:
-#   path (str) - path to a setup.cfg file.
+# RESPONSIBILITIES
+#     - Parse the file as INI format.
+#     - Read the install_requires value out of the [options] section.
+#     - Split that value into individual requirement-spec strings.
 #
-# RETURNS:
-#   (list[str] or None) - one requirement-spec string per dependency
-#   (version specifier still attached, e.g. "requests>=2.0", the same
-#   shape as a requirements.txt line), or None if the file can't be
-#   parsed as INI or has no [options] install_requires field.
+# PROCESS OVERVIEW
+#     1. Read the file's text and parse it as INI via configparser.
+#     2. If parsing fails, return None.
+#     3. If the [options] section has no install_requires field, return
+#        None.
+#     4. Split the install_requires value on commas and newlines into
+#        individual lines.
+#     5. Strip whitespace from each line and drop any empty lines.
+#     6. Return the resulting list of requirement-spec strings.
 #
-# RAISES/ERRORS:  Never raises; configparser.Error is caught.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      scan_python() (this file), list_python_deps() and
-#                 resolve_version_python() (dead_weight_scan.py).
-# CALLS:          read_text(), configparser.ConfigParser.
+# IMPORTANT DETAILS
+#     - setup.cfg is genuine INI format, so configparser correctly joins
+#       a multi-line install_requires value (the
+#       "install_requires =\n    pkg1\n    pkg2" continuation form) into
+#       one string without any custom continuation-line parsing.
+#     - Each returned string keeps its version specifier attached (e.g.
+#       "requests>=2.0"), the same shape as a requirements.txt line.
 #
-# EXAMPLE:
-#   # setup.cfg contains:
-#   #   [options]
-#   #   install_requires =
-#   #       requests>=2.0
-#   #       flask
-#   install_requires_from_setup_cfg("setup.cfg")
-#   -> ["requests>=2.0", "flask"]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     path (str)
+#         Path to a setup.cfg file.
+#
+# RETURNS
+#     list[str] or None
+#         One requirement-spec string per dependency, or None if the file
+#         can't be parsed as INI or has no [options] install_requires
+#         field.
+#
+# FAILURE CASES
+#     - File isn't valid INI: returns None.
+#     - File has no [options] install_requires field: returns None.
+################################################################################
 def install_requires_from_setup_cfg(path):
     """setup.cfg's [options] install_requires field via stdlib configparser
     (setup.cfg is genuine INI, no need for a hand-rolled continuation-line
@@ -839,48 +1104,73 @@ def install_requires_from_setup_cfg(path):
         return None
     if not parser.has_option("options", "install_requires"):
         return None
-    raw = parser.get("options", "install_requires")
-    return [line.strip() for line in raw.replace(",", "\n").splitlines() if line.strip()]
+    raw_install_requires = parser.get("options", "install_requires")
+    normalized_lines = raw_install_requires.replace(",", "\n").splitlines()
+    requirement_specs = []
+    for line in normalized_lines:
+        stripped_line = line.strip()
+        if stripped_line:
+            requirement_specs.append(stripped_line)
+    return requirement_specs
 
 
-# ------------------------------------------------------------------------
-# install_requires_from_setup_py
+################################################################################
+# FUNCTION: install_requires_from_setup_py
 #
-# WHAT IT DOES:   Reads the install_requires argument out of a setup.py
-#                 file's setup(...) call, without running the file.
-# WHY IT EXISTS:  A setup.py is an executable Python script, and this
-#                 tool scans untrusted repos, so it must never be
-#                 imported or exec'd (that would let a malicious repo run
-#                 arbitrary code during a "read-only" scan). Parsing it
-#                 with Python's `ast` module and pulling out only a
-#                 *literal* list/tuple value keeps the scan safe, at the
-#                 cost of skipping setup.py files that compute their
-#                 dependency list dynamically (e.g. reading from a
-#                 requirements.txt at setup time), those genuinely can't
-#                 be resolved without running code.
+# PURPOSE
+#     Reads the install_requires argument out of a setup.py file's
+#     setup(...) call, without ever running the file.
 #
-# INPUTS:
-#   path (str) - path to a setup.py file.
+# RESPONSIBILITIES
+#     - Parse the file's source into an abstract syntax tree (AST),
+#       never import or execute it.
+#     - Find a call to a function named setup() in that tree.
+#     - Extract the install_requires keyword argument's value, only if it
+#       is a literal list or tuple of strings.
 #
-# RETURNS:
-#   (list[str] or None) - requirement-spec strings if install_requires is
-#   a literal list/tuple of strings; None if the file has a syntax error,
-#   has no setup() call, has no install_requires keyword, or
-#   install_requires isn't a literal (e.g. it's a variable name or a
-#   function call).
+# PROCESS OVERVIEW
+#     1. Parse the file's text into an AST via ast.parse().
+#     2. If the file has a syntax error, return None.
+#     3. Walk the AST looking for a call to a function named setup().
+#     4. Within that call's keyword arguments, find install_requires.
+#     5. Evaluate its value with ast.literal_eval(), which only succeeds
+#        for literal values (strings, numbers, lists, dicts, etc.).
+#     6. If that value is a list or tuple, keep only the string entries
+#        and return them.
+#     7. If no setup() call, no install_requires keyword, or a
+#        non-literal value is found, return None.
 #
-# RAISES/ERRORS:  Never raises; SyntaxError and literal-eval failures
-#                 (ValueError/SyntaxError from ast.literal_eval) are both
-#                 caught.
-# SIDE EFFECTS:   None. Parses only, never executes the file.
-# CALLED BY:      scan_python() (this file), list_python_deps() and
-#                 resolve_version_python() (dead_weight_scan.py).
-# CALLS:          read_text(), ast.parse(), ast.walk(), ast.literal_eval().
+# IMPORTANT DETAILS
+#     - setup.py is an executable Python script, and this tool scans
+#       untrusted repositories, so it must never be imported or exec'd;
+#       doing so would let a malicious repo run arbitrary code during
+#       what is supposed to be a read-only scan. Parsing it with the
+#       ast module and evaluating only literal values keeps the scan
+#       safe.
+#     - ast.literal_eval() refuses anything that isn't a literal, so a
+#       call like install_requires=read_reqs() safely fails to evaluate
+#       here instead of being executed.
+#     - This means setup.py files that compute their dependency list
+#       dynamically (e.g. reading from a requirements.txt file at setup
+#       time) are skipped rather than guessed at; that dependency list
+#       genuinely cannot be resolved without running code.
 #
-# EXAMPLE:
-#   # setup.py contains: setup(name="app", install_requires=["flask"])
-#   install_requires_from_setup_py("setup.py") -> ["flask"]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     path (str)
+#         Path to a setup.py file.
+#
+# RETURNS
+#     list[str] or None
+#         Requirement-spec strings if install_requires is a literal
+#         list/tuple of strings; None otherwise.
+#
+# FAILURE CASES
+#     - File has a syntax error: returns None.
+#     - No setup() call found: returns None.
+#     - No install_requires keyword argument: returns None.
+#     - install_requires isn't a literal (e.g. a variable name or a
+#       function call): returns None.
+################################################################################
 def install_requires_from_setup_py(path):
     """setup.py's setup(install_requires=...) argument, extracted via ast
     in parse-only mode. This tool never executes code from a scanned repo,
@@ -889,58 +1179,113 @@ def install_requires_from_setup_py(path):
     (a variable, a call to a helper that reads requirements.txt, etc.)
     can't be resolved statically and is honestly skipped, not guessed."""
     try:
-        tree = ast.parse(read_text(path))
+        syntax_tree = ast.parse(read_text(path))
     except SyntaxError:
         return None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "setup":
-            for keyword in node.keywords:
-                if keyword.arg == "install_requires":
-                    try:
-                        # literal_eval refuses anything that isn't a
-                        # literal (numbers, strings, lists, dicts, etc.),
-                        # so a call like `install_requires=read_reqs()`
-                        # safely fails here instead of being executed.
-                        value = ast.literal_eval(keyword.value)
-                    except (ValueError, SyntaxError):
-                        return None
-                    if isinstance(value, (list, tuple)):
-                        return [v for v in value if isinstance(v, str)]
+
+    for node in ast.walk(syntax_tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Name) or node.func.id != "setup":
+            continue
+
+        for keyword in node.keywords:
+            if keyword.arg != "install_requires":
+                continue
+
+            try:
+                install_requires_value = ast.literal_eval(keyword.value)
+            except (ValueError, SyntaxError):
+                return None
+
+            # A non-list/tuple literal (e.g. install_requires was a
+            # string) is not treated as a hard failure here: the search
+            # keeps going in case a later setup() call in the same file
+            # has a usable value, matching the original parser's
+            # behavior before this rewrite.
+            if isinstance(install_requires_value, (list, tuple)):
+                requirement_specs = []
+                for entry in install_requires_value:
+                    if isinstance(entry, str):
+                        requirement_specs.append(entry)
+                return requirement_specs
+
     return None
 
 
-# ------------------------------------------------------------------------
-# scan_python
+################################################################################
+# FUNCTION: scan_python
 #
-# WHAT IT DOES:   Finds Python manifests (requirements*.txt,
-#                 pyproject.toml, Pipfile, setup.py, setup.cfg) and
-#                 lockfiles (Pipfile.lock, poetry.lock, uv.lock), counts
-#                 declared vs. resolved dependencies, and flags any
-#                 non-default package index URL.
-# WHY IT EXISTS:  Python has more competing dependency-declaration
-#                 formats than most ecosystems (pip, Poetry, Pipenv,
-#                 setuptools); this function is where all of that
-#                 format-specific counting logic lives for Python.
+# PURPOSE
+#     Inventories the Python ecosystem's dependencies. Python has more
+#     competing dependency-declaration formats than most ecosystems (pip,
+#     Poetry, Pipenv, setuptools), so this function is where all of that
+#     format-specific counting logic lives.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accumulator passed to add_if_private().
+# RESPONSIBILITIES
+#     - Find every Python manifest format (requirements*.txt,
+#       pyproject.toml, Pipfile, setup.py, setup.cfg) and lockfile format
+#       (Pipfile.lock, poetry.lock, uv.lock).
+#     - Count declared dependencies across all manifest formats found.
+#     - Count resolved dependencies across all lockfile formats found.
+#     - Flag any non-default package index URL found in any of those
+#       files, or in pip.conf/pip.ini.
+#     - Append one summary entry to package_managers if any manifest or
+#       lockfile exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers/private_registries.
+# PROCESS OVERVIEW
+#     1. Find all files for every Python manifest and lockfile format.
+#     2. If none exist, return without recording anything.
+#     3. Count declared dependencies from requirements*.txt files, while
+#        also checking their --index-url/--extra-index-url option lines
+#        for a private registry.
+#     4. Count declared dependencies from pyproject.toml's PEP 621
+#        dependencies array and Poetry's tool.poetry.dependencies table,
+#        while checking Poetry's [[tool.poetry.source]] entries for a
+#        private registry.
+#     5. Count declared dependencies from Pipfile's packages and
+#        dev-packages tables.
+#     6. Count declared dependencies from setup.py and setup.cfg via
+#        install_requires_from_setup_py()/install_requires_from_setup_cfg().
+#     7. Count resolved dependencies from Pipfile.lock's default and
+#        develop sections.
+#     8. Count resolved dependencies from poetry.lock/uv.lock by counting
+#        their [[package]] block headers.
+#     9. Check any pip.conf/pip.ini file's index-url for a private
+#        registry.
+#     10. Append one summary entry describing all of the above to
+#         package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text(), toml_section_lines(),
-#                 count_key_value_lines(), install_requires_from_setup_py(),
-#                 install_requires_from_setup_cfg(), read_json(),
-#                 add_if_private().
+# IMPORTANT DETAILS
+#     - requirements*.txt option lines (starting with "-", e.g. "-r
+#       base.txt" or "--index-url ...") are not package requirements and
+#       are not counted; only --index-url and --extra-index-url are
+#       inspected further, for a private registry.
+#     - The PEP 621 dependencies array is matched with a DOTALL regex so
+#       "." can match across the newlines inside a multi-line array.
+#     - poetry.lock and uv.lock both list resolved packages as
+#       [[package]] TOML array-of-tables entries; counting the header
+#       lines is enough, there is no need to parse each block's fields.
 #
-# EXAMPLE:
-#   scan_python("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accumulator passed to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place.
+#
+# FAILURE CASES
+#     - No Python manifest or lockfile found: returns without recording
+#       anything.
+#     - A manifest or lockfile that can't be parsed as expected simply
+#       leaves the corresponding count unaffected; it does not raise.
+################################################################################
 def scan_python(root, package_managers, private_registries):
     """Python: declared count from requirements*.txt, pyproject.toml
     (PEP 621 and Poetry), Pipfile, setup.py, and setup.cfg; resolved count
@@ -960,10 +1305,11 @@ def scan_python(root, package_managers, private_registries):
     lockfiles = pipfile_locks + poetry_locks + uv_locks
     if not manifests and not lockfiles:
         return
+
     declared_count = None
     for requirements_file in requirements_files:
         text = read_text(requirements_file)
-        count = 0
+        declared_count_for_requirements_file = 0
         for line in text.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
@@ -978,8 +1324,9 @@ def scan_python(root, package_managers, private_registries):
                     add_if_private(private_registries, "pip", match.group(1), requirements_file,
                                     DEFAULT_REGISTRY_HOSTS["pip"])
                 continue
-            count += 1
-        declared_count = (declared_count or 0) + count
+            declared_count_for_requirements_file += 1
+        declared_count = (declared_count or 0) + declared_count_for_requirements_file
+
     for pyproject_file in pyproject_files:
         text = read_text(pyproject_file)
         # PEP 621 (the standardized pyproject.toml format): a
@@ -997,24 +1344,31 @@ def scan_python(root, package_managers, private_registries):
                 r'\[\[tool\.poetry\.source\]\].*?url\s*=\s*["\']([^"\']+)["\']', text, re.DOTALL):
             add_if_private(private_registries, "pip", source_match.group(1), pyproject_file,
                             DEFAULT_REGISTRY_HOSTS["pip"])
+
     for pipfile in pipfiles:
         text = read_text(pipfile)
         for section in ("packages", "dev-packages"):
             section_lines = toml_section_lines(text, section)
             declared_count = (declared_count or 0) + count_key_value_lines(section_lines)
+
     for setup_py_file in setup_pys:
-        requires = install_requires_from_setup_py(setup_py_file)
-        if requires:
-            declared_count = (declared_count or 0) + len(requires)
+        setup_py_requirement_specs = install_requires_from_setup_py(setup_py_file)
+        if setup_py_requirement_specs:
+            declared_count = (declared_count or 0) + len(setup_py_requirement_specs)
+
     for setup_cfg_file in setup_cfgs:
-        requires = install_requires_from_setup_cfg(setup_cfg_file)
-        if requires:
-            declared_count = (declared_count or 0) + len(requires)
+        setup_cfg_requirement_specs = install_requires_from_setup_cfg(setup_cfg_file)
+        if setup_cfg_requirement_specs:
+            declared_count = (declared_count or 0) + len(setup_cfg_requirement_specs)
+
     resolved_count = None
     for lockfile in pipfile_locks:
-        data = read_json(lockfile)
-        if isinstance(data, dict):
-            resolved_count = (resolved_count or 0) + len(data.get("default") or {}) + len(data.get("develop") or {})
+        pipfile_lock_contents = read_json(lockfile)
+        if isinstance(pipfile_lock_contents, dict):
+            default_package_count = len(pipfile_lock_contents.get("default") or {})
+            develop_package_count = len(pipfile_lock_contents.get("develop") or {})
+            resolved_count = (resolved_count or 0) + default_package_count + develop_package_count
+
     for lockfile in poetry_locks + uv_locks:
         text = read_text(lockfile)
         # poetry.lock and uv.lock both list resolved packages as
@@ -1023,41 +1377,76 @@ def scan_python(root, package_managers, private_registries):
         block_count = len(re.findall(r"^\[\[package\]\]\s*$", text, re.MULTILINE))
         if block_count:
             resolved_count = (resolved_count or 0) + block_count
+
     for pip_conf in find_files(root, names={"pip.conf", "pip.ini"}):
         text = read_text(pip_conf)
         match = re.search(r"index-url\s*=\s*(\S+)", text)
         if match:
             add_if_private(private_registries, "pip", match.group(1), pip_conf, DEFAULT_REGISTRY_HOSTS["pip"])
+
     package_managers.append({"ecosystem": "python", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# scan_go
+################################################################################
+# FUNCTION: scan_go
 #
-# WHAT IT DOES:   Finds go.mod/go.sum, counts declared vs. resolved
-#                 modules, and flags any `replace` directive pointing at
-#                 a private host.
-# WHY IT EXISTS:  Go's module system has its own require/replace/go.sum
-#                 conventions that don't match any other ecosystem here,
-#                 so it gets its own dedicated parser.
+# PURPOSE
+#     Inventories the Go ecosystem's dependencies. Go's module system has
+#     its own require/replace/go.sum conventions that don't match any
+#     other ecosystem here, so it gets its own dedicated parser.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accumulator passed to add_if_private().
+# RESPONSIBILITIES
+#     - Find go.mod manifests and go.sum lockfiles.
+#     - Count declared modules from go.mod's require directives.
+#     - Count resolved modules from unique module names in go.sum.
+#     - Flag any `replace` directive that points at a private host.
+#     - Append one summary entry to package_managers if either file
+#       exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers/private_registries.
+# PROCESS OVERVIEW
+#     1. Find all go.mod and go.sum files.
+#     2. If neither exists, return without recording anything.
+#     3. For each go.mod, count require directives, both the
+#        parenthesized require ( ... ) block form and the single-line
+#        require form.
+#     4. For each go.mod, check every `replace` directive's target for a
+#        private host.
+#     5. For each go.sum, count the unique module names listed.
+#     6. Append one summary entry describing all of the above to
+#        package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text(), add_if_private().
+# IMPORTANT DETAILS
+#     - A `replace old => new` directive can point `new` at either a
+#       private module-proxy URL, or a bare host/path like
+#       "git.mycorp.internal/team/pkg" with no scheme at all. When there
+#       is no "://" in the target, "https://" is prepended before
+#       extracting the host, so the bare-host form is still recognized.
+#     - Each go.sum line is "module version hash"; a module usually
+#       appears twice (once for the module hash, once for the go.mod
+#       hash), so module names are deduplicated before counting.
+#     - Go has no single well-known public default registry host the
+#       way npm or PyPI do, so add_if_private() is called with an empty
+#       default-hosts set: any parseable replace target is treated as
+#       private.
 #
-# EXAMPLE:
-#   scan_go("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accumulator passed to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place.
+#
+# FAILURE CASES
+#     - No go.mod and no go.sum found: returns without recording
+#       anything.
+################################################################################
 def scan_go(root, package_managers, private_registries):
     """Go: declared count from go.mod's require directives, resolved
     count from unique modules in go.sum, plus any `replace` directive
@@ -1066,10 +1455,11 @@ def scan_go(root, package_managers, private_registries):
     lockfiles = find_files(root, names={"go.sum"})
     if not manifests and not lockfiles:
         return
+
     declared_count = None
     for go_mod_file in manifests:
         text = read_text(go_mod_file)
-        count = 0
+        declared_count_for_go_mod_file = 0
         in_require_block = False
         for line in text.splitlines():
             stripped_line = line.strip()
@@ -1081,61 +1471,108 @@ def scan_go(root, package_managers, private_registries):
                     in_require_block = False
                     continue
                 if stripped_line and not stripped_line.startswith("//"):
-                    count += 1
+                    declared_count_for_go_mod_file += 1
                 continue
             if stripped_line.startswith("require ") and "(" not in stripped_line:
-                count += 1
-        declared_count = (declared_count or 0) + count
+                declared_count_for_go_mod_file += 1
+        declared_count = (declared_count or 0) + declared_count_for_go_mod_file
+
         # A `replace old => new` directive can point `new` at either a
         # private module-proxy URL, or a bare host/path like
         # "git.mycorp.internal/team/pkg" with no scheme at all, hence the
         # fallback of prepending "https://" before extracting the host.
         for match in re.finditer(r"^replace\s+\S+\s*=>\s*(\S+)", text, re.MULTILINE):
-            target = match.group(1)
-            if "://" in target or (re.match(r"^[\w.-]+\.[a-z]{2,}/", target)):
-                url = target if "://" in target else f"https://{target}"
-                add_if_private(private_registries, "go", url, go_mod_file, set())
+            replace_target = match.group(1)
+            replace_target_has_scheme = "://" in replace_target
+            replace_target_looks_like_bare_host = bool(re.match(r"^[\w.-]+\.[a-z]{2,}/", replace_target))
+            if replace_target_has_scheme or replace_target_looks_like_bare_host:
+                if replace_target_has_scheme:
+                    replace_target_url = replace_target
+                else:
+                    replace_target_url = f"https://{replace_target}"
+                add_if_private(private_registries, "go", replace_target_url, go_mod_file, set())
+
     resolved_count = None
     for go_sum_file in lockfiles:
         text = read_text(go_sum_file)
         # Each line is "module version hash"; a module usually appears
         # twice (module hash + go.mod hash), dedupe to unique modules.
-        modules = {line.split()[0] for line in text.splitlines() if line.split()}
-        if modules:
-            resolved_count = (resolved_count or 0) + len(modules)
+        unique_module_names = set()
+        for line in text.splitlines():
+            line_fields = line.split()
+            if line_fields:
+                unique_module_names.add(line_fields[0])
+        if unique_module_names:
+            resolved_count = (resolved_count or 0) + len(unique_module_names)
+
     package_managers.append({"ecosystem": "go", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# scan_java
+################################################################################
+# FUNCTION: scan_java
 #
-# WHAT IT DOES:   Finds Maven (pom.xml), Gradle (build.gradle[.kts]), and
-#                 Ivy (ivy.xml) manifests, counts declared dependencies,
-#                 and flags any custom Maven repository URL.
-# WHY IT EXISTS:  Java has three unrelated build-tool conventions in
-#                 common use, each with a different dependency-declaration
-#                 syntax; this function normalizes all three into one
-#                 "java" ecosystem entry.
+# PURPOSE
+#     Inventories the Java ecosystem's dependencies. Java has three
+#     unrelated build-tool conventions in common use (Maven, Gradle,
+#     Ivy), each with a different dependency-declaration syntax; this
+#     function normalizes all three into one "java" ecosystem entry.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accumulator passed to add_if_private().
+# RESPONSIBILITIES
+#     - Find pom.xml, build.gradle, build.gradle.kts, and ivy.xml
+#       manifests.
+#     - Count declared dependencies using the syntax specific to whichever
+#       build tool produced the manifest.
+#     - Flag any custom Maven repository URL.
+#     - Append one summary entry to package_managers if any manifest
+#       exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers/private_registries.
-#   There is deliberately no resolved_dependencies count: none of Maven,
-#   Gradle, or Ivy has a default lockfile to count resolved packages from.
+# PROCESS OVERVIEW
+#     1. Find all Maven, Gradle, and Ivy manifest files.
+#     2. If none exist, return without recording anything.
+#     3. For a pom.xml, count <dependency> tags and check its
+#        <repositories> block for custom repository URLs.
+#     4. For an ivy.xml, count self-closing <dependency .../> tags.
+#     5. For a build.gradle or build.gradle.kts, count dependency
+#        configuration calls and check for maven { url ... } blocks
+#        pointing at a custom repository.
+#     6. Append one summary entry describing all of the above to
+#        package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text(), add_if_private().
+# IMPORTANT DETAILS
+#     - There is deliberately no resolved_dependencies count: none of
+#       Maven, Gradle, or Ivy has a default lockfile to count resolved
+#       packages from.
+#     - Ivy's <dependency org="..." name="..." rev="..."/> is a
+#       self-closing attribute tag, unlike Maven's nested-element
+#       <dependency>...</dependency>, so it needs its own counting
+#       pattern rather than reusing Maven's.
+#     - Ivy resolvers are conventionally configured in a separate
+#       ivysettings.xml file, not embedded in ivy.xml itself, so
+#       private-registry detection is not attempted for Ivy manifests.
+#     - Gradle dependency declarations are recognized by configuration
+#       name (implementation, api, compileOnly, runtimeOnly,
+#       testImplementation, testRuntimeOnly) followed by "(" or a quote,
+#       e.g. implementation("com.foo:bar:1.0") or testImplementation
+#       'com.foo:bar:1.0'.
 #
-# EXAMPLE:
-#   scan_java("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accumulator passed to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place.
+#
+# FAILURE CASES
+#     - No Maven, Gradle, or Ivy manifest found: returns without
+#       recording anything.
+################################################################################
 def scan_java(root, package_managers, private_registries):
     """Java/Maven/Gradle/Ivy: declared count from <dependency> tags
     (pom.xml), dependency-config calls (build.gradle), or <dependency
@@ -1177,31 +1614,59 @@ def scan_java(root, package_managers, private_registries):
                               "declared_dependencies": declared_count, "resolved_dependencies": None})
 
 
-# ------------------------------------------------------------------------
-# scan_ruby
+################################################################################
+# FUNCTION: scan_ruby
 #
-# WHAT IT DOES:   Finds Gemfile/Gemfile.lock, counts declared vs.
-#                 resolved gems, and flags any non-default gem source.
-# WHY IT EXISTS:  Bundler's Gemfile.lock has its own indentation-based
-#                 structure (not JSON, not TOML); this is the dedicated
-#                 parser for that format.
+# PURPOSE
+#     Inventories the Ruby/Bundler ecosystem's dependencies.
+#     Gemfile.lock has its own indentation-based structure (not JSON, not
+#     TOML), so this is the dedicated parser for that format.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accumulator passed to add_if_private().
+# RESPONSIBILITIES
+#     - Find Gemfile manifests and Gemfile.lock lockfiles.
+#     - Count declared gems from `gem` lines in the Gemfile.
+#     - Count resolved gems from the top-level entries in Gemfile.lock's
+#       specs: block.
+#     - Flag any non-default `source` line in the Gemfile.
+#     - Append one summary entry to package_managers if either file
+#       exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers/private_registries.
+# PROCESS OVERVIEW
+#     1. Find all Gemfile and Gemfile.lock files.
+#     2. If neither exists, return without recording anything.
+#     3. For each Gemfile, count `gem` declaration lines and check each
+#        `source` line for a private registry.
+#     4. For each Gemfile.lock, count the top-level gem entries in its
+#        specs: block.
+#     5. Append one summary entry describing all of the above to
+#        package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text(), add_if_private().
+# IMPORTANT DETAILS
+#     - Inside the specs: block, top-level gems are indented 4 spaces;
+#       their own transitive dependencies are indented 6 spaces. Only
+#       the 4-space-indented lines are counted.
+#     - The check for a 4-space-indented line must come before the check
+#       for "left the specs: block" (a line with no leading whitespace);
+#       swapping that order would break the "leaving the specs: block"
+#       detection.
 #
-# EXAMPLE:
-#   scan_ruby("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accumulator passed to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place.
+#
+# FAILURE CASES
+#     - No Gemfile and no Gemfile.lock found: returns without recording
+#       anything.
+################################################################################
 def scan_ruby(root, package_managers, private_registries):
     """Ruby/Bundler: declared count from `gem` lines in the Gemfile,
     resolved count from the GEM specs: block in Gemfile.lock, plus any
@@ -1210,16 +1675,18 @@ def scan_ruby(root, package_managers, private_registries):
     lockfiles = find_files(root, names={"Gemfile.lock"})
     if not manifests and not lockfiles:
         return
+
     declared_count = None
     for gemfile in manifests:
         text = read_text(gemfile)
         declared_count = (declared_count or 0) + len(re.findall(r"^\s*gem\s+['\"]", text, re.MULTILINE))
         for match in re.finditer(r"^\s*source\s+['\"]([^'\"]+)['\"]", text, re.MULTILINE):
             add_if_private(private_registries, "gem", match.group(1), gemfile, DEFAULT_REGISTRY_HOSTS["gem"])
+
     resolved_count = None
     for lockfile in lockfiles:
         text = read_text(lockfile)
-        count = 0
+        top_level_gem_count = 0
         in_specs_section = False
         for line in text.splitlines():
             if line.strip() == "specs:":
@@ -1232,40 +1699,69 @@ def scan_ruby(root, package_managers, private_registries):
                 # check with the next `elif` would break the "leaving the
                 # specs: block" detection below.
                 if line.startswith("    ") and not line.startswith("      "):
-                    count += 1
+                    top_level_gem_count += 1
                 elif line and not line.startswith(" "):
                     in_specs_section = False
-        if count:
-            resolved_count = (resolved_count or 0) + count
+        if top_level_gem_count:
+            resolved_count = (resolved_count or 0) + top_level_gem_count
+
     package_managers.append({"ecosystem": "ruby", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# scan_php
+################################################################################
+# FUNCTION: scan_php
 #
-# WHAT IT DOES:   Finds composer.json/composer.lock, counts declared vs.
-#                 resolved packages, and flags any custom repository URL.
-# WHY IT EXISTS:  Composer's manifest/lockfile are both plain JSON, so
-#                 this is the shortest scan_* function, JSON key lookups
-#                 are all that's needed.
+# PURPOSE
+#     Inventories the PHP/Composer ecosystem's dependencies. Composer's
+#     manifest and lockfile are both plain JSON, so this is the simplest
+#     scan_* function: JSON key lookups are all that's needed.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accumulator passed to add_if_private().
+# RESPONSIBILITIES
+#     - Find composer.json manifests and composer.lock lockfiles.
+#     - Count declared packages from composer.json's require and
+#       require-dev sections.
+#     - Count resolved packages from composer.lock's packages and
+#       packages-dev arrays.
+#     - Flag any custom repository URL declared in composer.json.
+#     - Append one summary entry to package_managers if either file
+#       exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers/private_registries.
+# PROCESS OVERVIEW
+#     1. Find all composer.json and composer.lock files.
+#     2. If neither exists, return without recording anything.
+#     3. For each composer.json, count require entries (excluding the
+#        "php" pseudo-dependency) plus require-dev entries.
+#     4. Check composer.json's repositories field, which can be either a
+#        list or a dict depending on Composer version, for any custom
+#        repository URL.
+#     5. For each composer.lock, count its packages and packages-dev
+#        array entries.
+#     6. Append one summary entry describing all of the above to
+#        package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_json(), add_if_private().
+# IMPORTANT DETAILS
+#     - "php" itself can appear as a pseudo-dependency in the require
+#       section (a required PHP version constraint), not a real
+#       package, so it is excluded from the declared count.
 #
-# EXAMPLE:
-#   scan_php("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accumulator passed to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place.
+#
+# FAILURE CASES
+#     - No composer.json and no composer.lock found: returns without
+#       recording anything.
+################################################################################
 def scan_php(root, package_managers, private_registries):
     """PHP/Composer: declared count from require + require-dev in
     composer.json, resolved count from packages + packages-dev arrays in
@@ -1274,16 +1770,21 @@ def scan_php(root, package_managers, private_registries):
     lockfiles = find_files(root, names={"composer.lock"})
     if not manifests and not lockfiles:
         return
+
     declared_count = None
     for composer_json_file in manifests:
-        data = read_json(composer_json_file)
-        if isinstance(data, dict):
+        composer_json_contents = read_json(composer_json_file)
+        if isinstance(composer_json_contents, dict):
             # "php" itself can appear as a pseudo-dependency (a required
             # PHP version), not a real package, so it's excluded here.
-            required = {k: v for k, v in (data.get("require") or {}).items() if k != "php"}
-            required_dev = data.get("require-dev") or {}
-            declared_count = (declared_count or 0) + len(required) + len(required_dev)
-            repositories = data.get("repositories")
+            required_packages = {}
+            for package_name, package_constraint in (composer_json_contents.get("require") or {}).items():
+                if package_name != "php":
+                    required_packages[package_name] = package_constraint
+            required_dev_packages = composer_json_contents.get("require-dev") or {}
+            declared_count = (declared_count or 0) + len(required_packages) + len(required_dev_packages)
+
+            repositories = composer_json_contents.get("repositories")
             if isinstance(repositories, list):
                 for repository in repositories:
                     if isinstance(repository, dict) and repository.get("url"):
@@ -1294,43 +1795,73 @@ def scan_php(root, package_managers, private_registries):
                     if isinstance(repository, dict) and repository.get("url"):
                         add_if_private(private_registries, "composer", repository["url"], composer_json_file,
                                         DEFAULT_REGISTRY_HOSTS["composer"])
+
     resolved_count = None
     for lockfile in lockfiles:
-        data = read_json(lockfile)
-        if isinstance(data, dict):
-            resolved_count = (resolved_count or 0) + len(data.get("packages") or []) + \
-                len(data.get("packages-dev") or [])
+        composer_lock_contents = read_json(lockfile)
+        if isinstance(composer_lock_contents, dict):
+            resolved_package_count = len(composer_lock_contents.get("packages") or [])
+            resolved_dev_package_count = len(composer_lock_contents.get("packages-dev") or [])
+            resolved_count = (resolved_count or 0) + resolved_package_count + resolved_dev_package_count
+
     package_managers.append({"ecosystem": "php", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# scan_rust
+################################################################################
+# FUNCTION: scan_rust
 #
-# WHAT IT DOES:   Finds Cargo.toml/Cargo.lock, counts declared vs.
-#                 resolved crates, and flags any custom registry
-#                 configured in .cargo/config.toml.
-# WHY IT EXISTS:  Cargo's manifest/lockfile share the same TOML-table
-#                 shape as Poetry's, so this reuses toml_section_lines()
-#                 and count_key_value_lines() rather than reinventing them.
+# PURPOSE
+#     Inventories the Rust/Cargo ecosystem's dependencies. Cargo's
+#     manifest and lockfile share the same TOML-table shape as Poetry's,
+#     so this reuses toml_section_lines() and count_key_value_lines()
+#     rather than reinventing that parsing.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accumulator passed to add_if_private().
+# RESPONSIBILITIES
+#     - Find Cargo.toml manifests and Cargo.lock lockfiles.
+#     - Count declared crates from Cargo.toml's dependencies,
+#       dev-dependencies, and build-dependencies tables.
+#     - Count resolved crates from Cargo.lock's [[package]] block
+#       headers.
+#     - Flag any custom registry configured in a repo-local
+#       .cargo/config.toml.
+#     - Append one summary entry to package_managers if either file
+#       exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers/private_registries.
+# PROCESS OVERVIEW
+#     1. Find all Cargo.toml and Cargo.lock files.
+#     2. If neither exists, return without recording anything.
+#     3. For each Cargo.toml, count key/value lines in its dependencies,
+#        dev-dependencies, and build-dependencies tables.
+#     4. For each config.toml file found, skip it unless it lives inside
+#        a ".cargo" directory, then check its registry line for a
+#        private registry.
+#     5. For each Cargo.lock, count its [[package]] block headers.
+#     6. Append one summary entry describing all of the above to
+#        package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text(), toml_section_lines(),
-#                 count_key_value_lines(), add_if_private().
+# IMPORTANT DETAILS
+#     - "config.toml" is a generic filename used by other tools too;
+#       only the one that actually lives inside a ".cargo" directory is
+#       Cargo's own config, so anything else with that name is skipped.
 #
-# EXAMPLE:
-#   scan_rust("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accumulator passed to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place.
+#
+# FAILURE CASES
+#     - No Cargo.toml and no Cargo.lock found: returns without recording
+#       anything.
+################################################################################
 def scan_rust(root, package_managers, private_registries):
     """Rust/Cargo: declared count from the [dependencies]/[dev-dependencies]/
     [build-dependencies] tables in Cargo.toml, resolved count from
@@ -1365,33 +1896,71 @@ def scan_rust(root, package_managers, private_registries):
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# scan_dotnet
+################################################################################
+# FUNCTION: scan_dotnet
 #
-# WHAT IT DOES:   Finds .csproj/paket.dependencies manifests and
-#                 packages.lock.json/paket.lock lockfiles, counts declared
-#                 vs. resolved packages, and flags any custom NuGet source.
-# WHY IT EXISTS:  .NET has two competing package managers (the built-in
-#                 NuGet CLI and the third-party Paket tool) that both
-#                 resolve from the same NuGet registry; this function
-#                 handles both under one "dotnet" ecosystem entry.
+# PURPOSE
+#     Inventories the .NET ecosystem's dependencies. .NET has two
+#     competing package managers, the built-in NuGet CLI and the
+#     third-party Paket tool, that both resolve from the same NuGet
+#     registry; this function handles both under one "dotnet" ecosystem
+#     entry.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accumulator passed to add_if_private().
+# RESPONSIBILITIES
+#     - Find .csproj and paket.dependencies manifests, and
+#       packages.lock.json and paket.lock lockfiles.
+#     - Count declared packages from <PackageReference> tags and
+#       `nuget` lines.
+#     - Count resolved packages from packages.lock.json and/or
+#       paket.lock.
+#     - Flag any custom source in paket.dependencies or nuget.config.
+#     - Append one summary entry to package_managers if any manifest or
+#       lockfile exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers/private_registries.
+# PROCESS OVERVIEW
+#     1. Find all .csproj, paket.dependencies, packages.lock.json, and
+#        paket.lock files.
+#     2. If no manifest and no lockfile exist, return without recording
+#        anything.
+#     3. For each .csproj, count <PackageReference> tags.
+#     4. For each paket.dependencies, count `nuget` lines and check each
+#        `source` line for a private registry.
+#     5. For each packages.lock.json, sum package counts across every
+#        target framework section.
+#     6. For each paket.lock, count the top-level package entries in its
+#        NUGET block.
+#     7. For each nuget.config/NuGet.Config, check its <add key value>
+#        entries whose value looks like a URL for a private registry.
+#     8. Append one summary entry describing all of the above to
+#        package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers and private_registries.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text(), read_json(), add_if_private().
+# IMPORTANT DETAILS
+#     - packages.lock.json is keyed by target framework (e.g. "net8.0"),
+#       each with its own package map; counts are summed across all
+#       frameworks, since the same package can be pinned per-framework.
+#     - paket.lock's NUGET block uses the same indentation convention as
+#       Gemfile.lock's specs: block: 4-space-indented lines are
+#       top-level packages, 6-space-indented lines are their transitive
+#       dependencies. A 4-space-indented "remote:" line is metadata, not
+#       a package, and is excluded from the count.
 #
-# EXAMPLE:
-#   scan_dotnet("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accumulator passed to add_if_private().
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers/private_registries in
+#         place.
+#
+# FAILURE CASES
+#     - No .csproj, paket.dependencies, packages.lock.json, or
+#       paket.lock found: returns without recording anything.
+################################################################################
 def scan_dotnet(root, package_managers, private_registries):
     """.NET/NuGet/Paket: declared count from <PackageReference> tags across
     .csproj files plus `nuget` lines in paket.dependencies, resolved count
@@ -1407,6 +1976,7 @@ def scan_dotnet(root, package_managers, private_registries):
     lockfiles = packages_lock_files + paket_lock_files
     if not manifests and not lockfiles:
         return
+
     declared_count = None
     for csproj_file in csproj_files:
         text = read_text(csproj_file)
@@ -1417,25 +1987,31 @@ def scan_dotnet(root, package_managers, private_registries):
         for source_match in re.finditer(r"^\s*source\s+(\S+)", text, re.MULTILINE | re.IGNORECASE):
             add_if_private(private_registries, "nuget", source_match.group(1), paket_deps_file,
                             DEFAULT_REGISTRY_HOSTS["nuget"])
+
     resolved_count = None
     for lockfile in packages_lock_files:
-        data = read_json(lockfile)
-        if isinstance(data, dict) and isinstance(data.get("dependencies"), dict):
+        packages_lock_json_contents = read_json(lockfile)
+        has_dependencies_by_framework = (
+            isinstance(packages_lock_json_contents, dict)
+            and isinstance(packages_lock_json_contents.get("dependencies"), dict)
+        )
+        if has_dependencies_by_framework:
             # packages.lock.json is keyed by target framework (e.g.
             # "net8.0"), each with its own package map; sum across all of
             # them since the same package can be pinned per-framework.
-            total = 0
-            for framework_deps in data["dependencies"].values():
-                if isinstance(framework_deps, dict):
-                    total += len(framework_deps)
-            if total:
-                resolved_count = (resolved_count or 0) + total
+            resolved_count_across_frameworks = 0
+            for framework_package_map in packages_lock_json_contents["dependencies"].values():
+                if isinstance(framework_package_map, dict):
+                    resolved_count_across_frameworks += len(framework_package_map)
+            if resolved_count_across_frameworks:
+                resolved_count = (resolved_count or 0) + resolved_count_across_frameworks
+
     for paket_lock_file in paket_lock_files:
         text = read_text(paket_lock_file)
         # paket.lock's NUGET block uses the same indentation convention as
         # Gemfile.lock's specs: block, 4-space-indented lines are top-level
         # packages, 6-space-indented lines are their transitive deps.
-        count = 0
+        top_level_package_count = 0
         in_nuget_section = False
         for line in text.splitlines():
             if line.strip() == "NUGET":
@@ -1443,50 +2019,80 @@ def scan_dotnet(root, package_managers, private_registries):
                 continue
             if in_nuget_section:
                 if line.startswith("    ") and not line.startswith("      ") and not line.strip().startswith("remote:"):
-                    count += 1
+                    top_level_package_count += 1
                 elif line and not line.startswith(" "):
                     in_nuget_section = False
-        if count:
-            resolved_count = (resolved_count or 0) + count
+        if top_level_package_count:
+            resolved_count = (resolved_count or 0) + top_level_package_count
+
     for nuget_config_file in find_files(root, names={"nuget.config", "NuGet.Config"}):
         text = read_text(nuget_config_file)
         for match in re.finditer(r'<add\s+key="[^"]*"\s+value="([^"]+)"', text):
             if match.group(1).startswith("http"):
                 add_if_private(private_registries, "nuget", match.group(1), nuget_config_file,
                                 DEFAULT_REGISTRY_HOSTS["nuget"])
+
     package_managers.append({"ecosystem": "dotnet", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# scan_dart
+################################################################################
+# FUNCTION: scan_dart
 #
-# WHAT IT DOES:   Finds pubspec.yaml/pubspec.lock, counts declared vs.
-#                 resolved packages.
-# WHY IT EXISTS:  Dart/Flutter's pub.dev ecosystem needs the same
-#                 declared/resolved counting as every other ecosystem
-#                 here, parsed out of YAML by indentation since no YAML
-#                 parser dependency is available (stdlib-only tool).
+# PURPOSE
+#     Inventories the Dart/Flutter (pub.dev) ecosystem's dependencies,
+#     parsed out of YAML by indentation since this project is
+#     stdlib-only and has no YAML parser available.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   _private_registries (list) - accepted only so this function's
-#     signature matches every other scan_* function's; pub.dev has no
-#     private-registry configuration convention to check, so this
-#     parameter is unused (the leading underscore signals that).
+# RESPONSIBILITIES
+#     - Find pubspec.yaml manifests and pubspec.lock lockfiles.
+#     - Count declared packages from pubspec.yaml's dependencies and
+#       dev_dependencies blocks.
+#     - Count resolved packages from pubspec.lock's top-level package
+#       entries.
+#     - Append one summary entry to package_managers if either file
+#       exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers.
+# PROCESS OVERVIEW
+#     1. Find all pubspec.yaml and pubspec.lock files.
+#     2. If neither exists, return without recording anything.
+#     3. For each pubspec.yaml, track whether the current line is inside
+#        a dependencies or dev_dependencies block, and count each
+#        2-space-indented package name line within it.
+#     4. For each pubspec.lock, count its 2-space-indented top-level
+#        package entries.
+#     5. Append one summary entry describing all of the above to
+#        package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers.
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - pub.dev has no private-registry configuration convention to
+#       check, so this function takes a private_registries parameter
+#       only for signature symmetry with the other scan_* functions; it
+#       is unused, which the leading underscore in its name signals.
+#     - A line with no leading whitespace means the next top-level YAML
+#       key has been reached, i.e. the dependencies/dev_dependencies
+#       block has ended.
+#     - A 2-space-indented "name:" line is a direct dependency entry;
+#       anything indented further is a nested field of that entry (e.g.
+#       a git/path source), not a new package.
 #
-# EXAMPLE:
-#   scan_dart("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     _private_registries (list)
+#         Unused; present only for signature symmetry with the other
+#         scan_* functions.
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers in place.
+#
+# FAILURE CASES
+#     - No pubspec.yaml and no pubspec.lock found: returns without
+#       recording anything.
+################################################################################
 def scan_dart(root, package_managers, _private_registries):
     """Dart/Flutter: declared count from the dependencies/dev_dependencies
     blocks in pubspec.yaml, resolved count from top-level package entries
@@ -1497,11 +2103,12 @@ def scan_dart(root, package_managers, _private_registries):
     lockfiles = find_files(root, names={"pubspec.lock"})
     if not manifests and not lockfiles:
         return
+
     declared_count = None
     for pubspec_file in manifests:
         text = read_text(pubspec_file)
         in_deps_section = False
-        count = 0
+        declared_count_for_pubspec_file = 0
         for line in text.splitlines():
             if re.match(r"^(dependencies|dev_dependencies):\s*$", line):
                 in_deps_section = True
@@ -1516,52 +2123,80 @@ def scan_dart(root, package_managers, _private_registries):
                 # entry; anything indented further is a nested field of
                 # that entry (e.g. a git/path source), not a new package.
                 if re.match(r"^  \S[^:]*:", line):
-                    count += 1
-        declared_count = (declared_count or 0) + count
+                    declared_count_for_pubspec_file += 1
+        declared_count = (declared_count or 0) + declared_count_for_pubspec_file
+
     resolved_count = None
     for lockfile in lockfiles:
         text = read_text(lockfile)
         block_count = len(re.findall(r"^  \S[^:]*:\s*$", text, re.MULTILINE))
         if block_count:
             resolved_count = (resolved_count or 0) + block_count
+
     package_managers.append({"ecosystem": "dart", "manifest_files": manifests, "lockfile_files": lockfiles,
                               "declared_dependencies": declared_count, "resolved_dependencies": resolved_count})
 
 
-# ------------------------------------------------------------------------
-# run_syft_conan
+# `syft` is used only for Conan detection, a narrower job than `scc`'s
+# full-repo LOC scan, so it gets a shorter timeout than SCC_TIMEOUT_SECONDS.
+SYFT_TIMEOUT_SECONDS = 120
+
+################################################################################
+# FUNCTION: run_syft_conan
 #
-# WHAT IT DOES:   Shells out to the external `syft` tool to detect Conan
-#                 (a C/C++ package manager) dependencies via its
-#                 dedicated Conan and SBOM (Software Bill of Materials, a
-#                 formal inventory of a project's components) catalogers.
-# WHY IT EXISTS:  Conan's lockfile format changed between v1 and v2, and
-#                 `syft` already correctly handles both plus
-#                 conaninfo.txt and vendor-supplied SBOM files, none of
-#                 which the hand-rolled regex/JSON fallback in scan_cpp()
-#                 can match. Using `syft` when available gets a much more
-#                 complete answer for comparatively little code.
+# PURPOSE
+#     Detects Conan (a C/C++ package manager) dependencies by shelling
+#     out to the external `syft` tool's dedicated Conan and SBOM
+#     (Software Bill of Materials, a formal inventory of a project's
+#     components) catalogers, since Conan's lockfile format changed
+#     between v1 and v2 and `syft` already handles both correctly.
 #
-# INPUTS:
-#   root (str) - directory to scan.
+# RESPONSIBILITIES
+#     - Run the `syft` binary against the given directory, selecting
+#       only its Conan and SBOM catalogers.
+#     - Parse its JSON output.
+#     - Keep only the artifacts that have both a name and a version.
 #
-# RETURNS:
-#   (list[dict] or None) - {"name", "version"} entries for every detected
-#   artifact, or None if `syft` isn't installed, times out, exits
-#   non-zero, or its output isn't valid JSON. Callers must fall back to
-#   scan_cpp()'s manifest-only parse when this returns None, the same
-#   optional-tool contract as run_scc().
+# PROCESS OVERVIEW
+#     1. Run `syft dir:<root> -o json --select-catalogers conan,sbom` as
+#        a subprocess, capturing its output and bounding its run time.
+#     2. If the binary is missing or the run times out, return None.
+#     3. If the process exits non-zero, return None.
+#     4. Parse its stdout as JSON.
+#     5. If that JSON is invalid, return None.
+#     6. Keep only the artifacts that have both a "name" and a
+#        "version" field.
+#     7. Return the kept artifacts.
 #
-# RAISES/ERRORS:  Never raises; OSError and subprocess.TimeoutExpired are
-#                 both caught.
-# SIDE EFFECTS:   Spawns a child process. Read-only otherwise.
-# CALLED BY:      scan_cpp().
-# CALLS:          subprocess.run(["syft", ...]).
+# IMPORTANT DETAILS
+#     - `syft`'s conan-cataloger correctly handles both conan.lock v1
+#       and v2 formats plus conaninfo.txt, and its sbom-cataloger picks
+#       up any vendor-supplied SBOM checked into the repo (*.cdx.json,
+#       *.spdx.json, *.syft.json). None of that is something the
+#       hand-rolled regex/JSON fallback in scan_cpp() can match; using
+#       `syft` when available gets a much more complete answer for
+#       comparatively little code here.
+#     - Spawns a child process (`syft`); read-only otherwise.
+#     - Callers must fall back to scan_cpp()'s manifest-only parse
+#       whenever this function returns None, the same optional-tool
+#       contract as run_scc().
 #
-# EXAMPLE:
-#   run_syft_conan("/repo")
-#   -> [{"name": "fmt", "version": "10.1.1"}, ...]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Directory to scan.
+#
+# RETURNS
+#     list[dict] or None
+#         {"name", "version"} entries for every detected artifact, or
+#         None if `syft` isn't installed, times out, exits non-zero, or
+#         its output isn't valid JSON.
+#
+# FAILURE CASES
+#     - `syft` binary not found: returns None.
+#     - `syft` run exceeds SYFT_TIMEOUT_SECONDS: returns None.
+#     - `syft` exits non-zero: returns None.
+#     - `syft`'s stdout isn't valid JSON: returns None.
+################################################################################
 def run_syft_conan(root):
     """Shells out to `syft dir:<root> -o json --select-catalogers conan,sbom`
     for Conan dependency detection: syft's conan-cataloger correctly
@@ -1573,56 +2208,80 @@ def run_syft_conan(root):
     non-zero, the caller falls back to the manifest-only parse in that
     case, same optional-tool contract as run_scc()."""
     try:
-        proc = subprocess.run(
+        syft_process = subprocess.run(
             ["syft", f"dir:{root}", "-o", "json", "--select-catalogers", "conan,sbom"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=SYFT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
-    if proc.returncode != 0:
+
+    if syft_process.returncode != 0:
         return None
+
     try:
-        data = json.loads(proc.stdout)
+        syft_output = json.loads(syft_process.stdout)
     except ValueError:
         return None
-    return [a for a in (data.get("artifacts") or []) if a.get("name") and a.get("version")]
+
+    detected_artifacts = []
+    for artifact in (syft_output.get("artifacts") or []):
+        if artifact.get("name") and artifact.get("version"):
+            detected_artifacts.append(artifact)
+    return detected_artifacts
 
 
-# ------------------------------------------------------------------------
-# scan_cpp_structural_signals
+################################################################################
+# FUNCTION: scan_cpp_structural_signals
 #
-# WHAT IT DOES:   Looks for CMake find_package()/FetchContent_Declare()
-#                 calls and .gitmodules submodule entries, as a weak hint
-#                 that a C/C++ dependency exists, even without a real
-#                 package-manager manifest.
-# WHY IT EXISTS:  Many C/C++ projects don't use Conan or vcpkg at all,
-#                 they pull dependencies via CMake or git submodules
-#                 instead. This gives at least a "something is here"
-#                 signal for those projects, clearly separated from real
-#                 manifest-based counts since it's much less reliable
-#                 (see the RETURNS note on why it's low-confidence).
+# PURPOSE
+#     Gives at least a "something is here" signal for C/C++ projects
+#     that don't use Conan or vcpkg at all, but instead pull
+#     dependencies via CMake calls or git submodules.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find CMake find_package() and FetchContent_Declare() calls in
+#       every CMakeLists.txt.
+#     - Find submodule entries in every .gitmodules file.
+#     - Report both as a list of signals, clearly separate from real
+#       manifest-based dependency counts.
 #
-# RETURNS:
-#   (list[dict]) - one entry per detected signal, each with at least
-#   "name", "source" (one of "find_package", "FetchContent_Declare",
-#   "gitmodules"), and "file". FetchContent/gitmodules entries also
-#   include "repository" and, for FetchContent, an optional "ref" (which
-#   may be a branch name rather than a pinned release, so it isn't a
-#   trustworthy version). Empty list if nothing found.
+# PROCESS OVERVIEW
+#     1. Find all CMakeLists.txt files.
+#     2. For each one, collect every find_package() call's argument as
+#        a signal.
+#     3. For each one, collect every FetchContent_Declare() call's name,
+#        GIT_REPOSITORY, and optional GIT_TAG as a signal.
+#     4. Find all .gitmodules files.
+#     5. For each one, collect every [submodule "name"] entry's name
+#        and url as a signal.
+#     6. Return all collected signals.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      scan_cpp().
-# CALLS:          find_files(), read_text().
+# IMPORTANT DETAILS
+#     - This is a much lower-confidence signal than a real
+#       manifest-based dependency count, and is deliberately kept out
+#       of declared_dependencies/resolved_dependencies in scan_cpp():
+#       find_package() usually has no version at all, and a
+#       FetchContent GIT_TAG can be a branch name rather than a pinned
+#       release, so neither is a trustworthy version.
+#     - This mirrors the "structural regex signal, not deep analysis"
+#       approach already used for Dockerfile FROM scraping and IaC
+#       content-sniffing elsewhere in this file.
 #
-# EXAMPLE:
-#   scan_cpp_structural_signals("/repo")
-#   -> [{"name": "OpenSSL", "source": "find_package",
-#        "file": "/repo/CMakeLists.txt"}]
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     list[dict]
+#         One entry per detected signal, each with at least "name",
+#         "source" (one of "find_package", "FetchContent_Declare",
+#         "gitmodules"), and "file". FetchContent/gitmodules entries
+#         also include "repository" and, for FetchContent, an optional
+#         "ref". Empty list if nothing found.
+#
+# FAILURE CASES
+#     - None expected.
+################################################################################
 def scan_cpp_structural_signals(root):
     """Best-effort CMakeLists.txt find_package()/FetchContent_Declare()
     calls and .gitmodules submodule entries: a structural hint that a
@@ -1652,44 +2311,77 @@ def scan_cpp_structural_signals(root):
     return signals
 
 
-# ------------------------------------------------------------------------
-# scan_cpp
+################################################################################
+# FUNCTION: scan_cpp
 #
-# WHAT IT DOES:   Finds Conan and vcpkg manifests/lockfiles, counts
-#                 declared vs. resolved C/C++ dependencies (using `syft`
-#                 for the Conan resolved count when available), and also
-#                 reports the weaker CMake/gitmodules structural signals.
-# WHY IT EXISTS:  C/C++ has no single dominant package manager the way
-#                 npm or pip do; this function covers the two that do
-#                 have a real manifest format (Conan, vcpkg) while being
-#                 honest that CMake/gitmodules-based dependencies are a
-#                 much weaker signal, reported separately rather than
-#                 mixed into the same counts.
+# PURPOSE
+#     Inventories the C/C++ ecosystem's dependencies. C/C++ has no
+#     single dominant package manager the way npm or pip do; this
+#     function covers the two that do have a real manifest format
+#     (Conan, vcpkg), while being honest that CMake/gitmodules-based
+#     dependencies are a much weaker signal, reported separately rather
+#     than mixed into the same counts.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
-#   package_managers (list) - accumulator appended to in place.
-#   private_registries (list) - accepted for signature symmetry with the
-#     other scan_* functions; unused here (no reliable committed-file
-#     convention exists for a custom Conan remote, the same call already
-#     made for Ivy and Dart).
+# RESPONSIBILITIES
+#     - Find Conan (conanfile.txt, conanfile.py, conan.lock) and vcpkg
+#       (vcpkg.json) manifests/lockfiles.
+#     - Count declared dependencies from Conan and vcpkg manifests.
+#     - Count resolved Conan dependencies, preferring `syft` when it's
+#       usable and falling back to a hand-rolled conan.lock parse
+#       otherwise.
+#     - Also collect the weaker CMake/gitmodules structural signals via
+#       scan_cpp_structural_signals().
+#     - Append one summary entry to package_managers if any manifest,
+#       lockfile, or structural signal exists.
 #
-# RETURNS:
-#   (None) - results appended to package_managers. The appended entry has
-#   an extra "unversioned_signals" key (from
-#   scan_cpp_structural_signals()) that no other ecosystem's entry has.
+# PROCESS OVERVIEW
+#     1. Find all conanfile.txt, conanfile.py, vcpkg.json, and
+#        conan.lock files, and collect CMake/gitmodules structural
+#        signals.
+#     2. If nothing was found in any of those, return without recording
+#        anything.
+#     3. For each conanfile.txt, count non-comment lines in its
+#        requires, build_requires, and tool_requires sections.
+#     4. For each conanfile.py, count self.requires()/
+#        self.build_requires()/self.tool_requires() calls.
+#     5. For each vcpkg.json, count its dependencies array entries.
+#     6. If any Conan manifest or lockfile exists, try `syft` for the
+#        resolved Conan dependency count.
+#     7. If `syft` wasn't usable, fall back to counting entries across
+#        conan.lock's requires/build_requires/tool_requires/
+#        python_requires arrays.
+#     8. Append one summary entry describing all of the above, plus the
+#        structural signals, to package_managers.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   Mutates package_managers. May spawn a `syft` subprocess
-#                 via run_syft_conan().
-# CALLED BY:      scan_package_managers().
-# CALLS:          find_files(), read_text(), toml_section_lines(),
-#                 read_json(), run_syft_conan(),
-#                 scan_cpp_structural_signals().
+# IMPORTANT DETAILS
+#     - `syft` is only invoked when there's an actual Conan
+#        manifest/lock to resolve; calling out to an external process
+#        for a vcpkg-only (or manifest-less) project would just waste a
+#        subprocess call.
+#     - No private-registry detection is attempted in this function:
+#       there's no reliable committed-file convention for a custom
+#       Conan remote, the same call already made for Ivy and Dart.
+#     - The appended entry has an extra "unversioned_signals" key (from
+#       scan_cpp_structural_signals()) that no other ecosystem's entry
+#       has.
 #
-# EXAMPLE:
-#   scan_cpp("/repo", package_managers, private_registries)
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#     package_managers (list)
+#         Accumulator appended to in place.
+#     private_registries (list)
+#         Accepted for signature symmetry with the other scan_*
+#         functions; unused here.
+#
+# RETURNS
+#     None
+#         Results are appended to package_managers in place.
+#
+# FAILURE CASES
+#     - No Conan/vcpkg manifest, no conan.lock, and no structural signal
+#       found: returns without recording anything.
+################################################################################
 def scan_cpp(root, package_managers, private_registries):
     """C/C++: Conan (via syft when available, since it handles conan.lock
     v1+v2, conaninfo.txt, and vendor SBOMs, else conanfile.txt/
@@ -1712,42 +2404,48 @@ def scan_cpp(root, package_managers, private_registries):
     declared_count = None
     for conanfile_txt in conanfile_txts:
         text = read_text(conanfile_txt)
-        count = 0
+        declared_count_for_conanfile_txt = 0
         for section in ("requires", "build_requires", "tool_requires"):
             for line in toml_section_lines(text, section):
                 stripped_line = line.strip()
                 if stripped_line and not stripped_line.startswith("#"):
-                    count += 1
-        declared_count = (declared_count or 0) + count
+                    declared_count_for_conanfile_txt += 1
+        declared_count = (declared_count or 0) + declared_count_for_conanfile_txt
     for conanfile_py in conanfile_pys:
         text = read_text(conanfile_py)
-        count = len(re.findall(r"self\.(?:requires|build_requires|tool_requires)\(", text))
-        declared_count = (declared_count or 0) + count
+        declared_count_for_conanfile_py = len(
+            re.findall(r"self\.(?:requires|build_requires|tool_requires)\(", text))
+        declared_count = (declared_count or 0) + declared_count_for_conanfile_py
     for vcpkg_json_file in vcpkg_jsons:
-        data = read_json(vcpkg_json_file)
-        if isinstance(data, dict):
-            deps = data.get("dependencies")
-            if isinstance(deps, list):
-                declared_count = (declared_count or 0) + len(deps)
+        vcpkg_json_contents = read_json(vcpkg_json_file)
+        if isinstance(vcpkg_json_contents, dict):
+            vcpkg_dependencies = vcpkg_json_contents.get("dependencies")
+            if isinstance(vcpkg_dependencies, list):
+                declared_count = (declared_count or 0) + len(vcpkg_dependencies)
 
     resolved_count = None
     # Only bother invoking syft if there's an actual Conan manifest/lock
     # to resolve, calling out to an external process for a vcpkg-only
     # (or manifest-less) project would just waste a subprocess call.
-    syft_packages = run_syft_conan(root) if (conanfile_txts or conanfile_pys or conan_locks) else None
+    any_conan_manifest_or_lock_exists = bool(conanfile_txts or conanfile_pys or conan_locks)
+    if any_conan_manifest_or_lock_exists:
+        syft_packages = run_syft_conan(root)
+    else:
+        syft_packages = None
+
     if syft_packages is not None:
         resolved_count = len(syft_packages) or None
     else:
         for lockfile in conan_locks:
-            data = read_json(lockfile)
-            if isinstance(data, dict):
-                count = 0
+            conan_lock_contents = read_json(lockfile)
+            if isinstance(conan_lock_contents, dict):
+                resolved_count_for_conan_lock = 0
                 for key in ("requires", "build_requires", "tool_requires", "python_requires"):
-                    value = data.get(key)
-                    if isinstance(value, list):
-                        count += len(value)
-                if count:
-                    resolved_count = (resolved_count or 0) + count
+                    requires_list = conan_lock_contents.get(key)
+                    if isinstance(requires_list, list):
+                        resolved_count_for_conan_lock += len(requires_list)
+                if resolved_count_for_conan_lock:
+                    resolved_count = (resolved_count or 0) + resolved_count_for_conan_lock
 
     package_managers.append({
         "ecosystem": "cpp", "manifest_files": manifests, "lockfile_files": lockfiles,
@@ -1756,34 +2454,44 @@ def scan_cpp(root, package_managers, private_registries):
     })
 
 
-# ------------------------------------------------------------------------
-# scan_package_managers
+################################################################################
+# FUNCTION: scan_package_managers
 #
-# WHAT IT DOES:   Runs every ecosystem's scan_* function in turn and
-#                 collects all of their results.
-# WHY IT EXISTS:  Gives main() one call to make instead of ten, and keeps
-#                 the list of supported ecosystems in one obvious place.
+# PURPOSE
+#     Gives main() one call to make instead of ten, and keeps the list
+#     of supported ecosystems in one obvious place.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Run every ecosystem's scan_* function against the same root,
+#       package_managers list, and private_registries list.
+#     - Return the two accumulator lists once every ecosystem has run.
 #
-# RETURNS:
-#   (tuple[list, list]) - (package_managers, private_registries), the
-#   same two lists every scan_* function appended/extended in place while
-#   running. Either list can be empty if nothing was found.
+# PROCESS OVERVIEW
+#     1. Start empty package_managers and private_registries lists.
+#     2. Run each ecosystem's scan_* function in turn, passing it root
+#        and both accumulator lists.
+#     3. Return the two accumulator lists.
 #
-# RAISES/ERRORS:  None expected beyond whatever an individual scan_*
-#                 function could raise (none of them currently do).
-# SIDE EFFECTS:   Everything each scan_* function does (subprocess calls
-#                 for scan_cpp's syft usage, filesystem reads throughout).
-# CALLED BY:      main().
-# CALLS:          scan_javascript(), scan_python(), scan_go(), scan_java(),
-#                 scan_ruby(), scan_php(), scan_rust(), scan_dotnet(),
-#                 scan_dart(), scan_cpp().
+# IMPORTANT DETAILS
+#     - Every scan_* function mutates package_managers and
+#       private_registries in place; this function does not build the
+#       result itself, it only sequences the calls and returns the
+#       lists they filled in.
 #
-# EXAMPLE:
-#   package_managers, private_registries = scan_package_managers("/repo")
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     tuple[list, list]
+#         (package_managers, private_registries), the same two lists
+#         every scan_* function appended/extended in place while
+#         running. Either list can be empty if nothing was found.
+#
+# FAILURE CASES
+#     - None expected beyond whatever an individual scan_* function
+#       could raise (none of them currently do).
+################################################################################
 def scan_package_managers(root):
     """Runs every ecosystem's scan_* function and collects their results.
     Returns (package_managers, private_registries), the two lists every
@@ -1798,34 +2506,51 @@ def scan_package_managers(root):
 
 # --- containers ----------------------------------------------------------
 
-# ------------------------------------------------------------------------
-# scan_containers
+################################################################################
+# FUNCTION: scan_containers
 #
-# WHAT IT DOES:   Finds every Dockerfile (including suffixed variants
-#                 like Dockerfile.dev) along with their FROM base images,
-#                 and every docker-compose*.yml/.yaml file.
-# WHY IT EXISTS:  Knowing what base images a repo builds from, and
-#                 whether it uses Compose, is part of the "what does this
-#                 repo actually run on" inventory the calling skill needs.
+# PURPOSE
+#     Inventories a repo's container tooling: every Dockerfile with its
+#     FROM base images, and every docker-compose file. Knowing what base
+#     images a repo builds from, and whether it uses Compose, is part of
+#     the "what does this repo actually run on" inventory the calling
+#     skill needs.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find every Dockerfile, including suffixed variants like
+#       Dockerfile.dev.
+#     - Extract each Dockerfile's FROM base image references.
+#     - Find every docker-compose*.yml/.yaml file.
 #
-# RETURNS:
-#   (dict) - {"dockerfiles": [{"path", "base_images": [...]}], ...],
-#   "compose_files": [...]}, both lists sorted, both possibly empty.
+# PROCESS OVERVIEW
+#     1. Find every file named exactly "Dockerfile".
+#     2. Also find every file whose name starts with "Dockerfile" but
+#        isn't exactly "Dockerfile" (suffixed variants).
+#     3. For each Dockerfile found, extract its FROM line image
+#        references.
+#     4. Find every file matching the docker-compose*.yml/.yaml naming
+#        pattern.
+#     5. Return both collections.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      main().
-# CALLS:          find_files(), walk(), read_text().
+# IMPORTANT DETAILS
+#     - A FROM line's image reference is matched at the start of a
+#       line, e.g. "FROM python:3.12-slim" or "FROM python:3.12 AS
+#       builder"; the trailing "AS builder" alias is not captured, only
+#       the image reference itself.
 #
-# EXAMPLE:
-#   scan_containers("/repo")
-#   -> {"dockerfiles": [{"path": "/repo/Dockerfile",
-#                         "base_images": ["python:3.12-slim"]}],
-#       "compose_files": ["/repo/docker-compose.yml"]}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     dict
+#         {"dockerfiles": [{"path", "base_images": [...]}, ...],
+#         "compose_files": [...]}, both lists sorted, both possibly
+#         empty.
+#
+# FAILURE CASES
+#     - None expected.
+################################################################################
 def scan_containers(root):
     """Finds every Dockerfile (including suffixed variants like
     Dockerfile.dev) with its FROM base images, and every
@@ -1835,69 +2560,95 @@ def scan_containers(root):
         for filename in filenames:
             if filename.startswith("Dockerfile") and filename != "Dockerfile":
                 dockerfile_paths.append(os.path.join(dirpath, filename))
+
     dockerfiles = []
-    for path in sorted(set(dockerfile_paths)):
-        text = read_text(path)
+    for dockerfile_path in sorted(set(dockerfile_paths)):
+        text = read_text(dockerfile_path)
         # Matches a FROM line's image reference at the start of a line,
         # e.g. "FROM python:3.12-slim" or "FROM python:3.12 AS builder"
         # (the trailing "AS builder" alias is not captured, only the
         # image reference itself).
         base_images = re.findall(r"^FROM\s+(\S+)", text, re.MULTILINE)
-        dockerfiles.append({"path": path, "base_images": base_images})
+        dockerfiles.append({"path": dockerfile_path, "base_images": base_images})
+
     compose_files = []
     for dirpath, _dirnames, filenames in walk(root):
         for filename in filenames:
             if re.match(r"^docker-compose.*\.ya?ml$", filename):
                 compose_files.append(os.path.join(dirpath, filename))
+
     return {"dockerfiles": dockerfiles, "compose_files": sorted(compose_files)}
 
 
 # --- IaC -------------------------------------------------------------------
 
-# ------------------------------------------------------------------------
-# scan_iac
+################################################################################
+# FUNCTION: scan_iac
 #
-# WHAT IT DOES:   Finds Infrastructure-as-Code (IaC, configuration files
-#                 that declare cloud or deployment resources instead of
-#                 provisioning them by hand) files, split by tool:
-#                 Terraform, CloudFormation, Kubernetes, Helm, Ansible,
-#                 Pulumi, Serverless Framework, and AWS CDK.
-# WHY IT EXISTS:  Several of these tools (CloudFormation, Kubernetes,
-#                 Ansible) all use plain .yml/.yaml/.json files with no
-#                 distinguishing filename, so telling them apart requires
-#                 looking at file contents, not just names, this is the
-#                 one place that does that classification.
+# PURPOSE
+#     Finds Infrastructure-as-Code (IaC, configuration files that
+#     declare cloud or deployment resources instead of provisioning
+#     them by hand) files, split by tool: Terraform, CloudFormation,
+#     Kubernetes, Helm, Ansible, Pulumi, Serverless Framework, and AWS
+#     CDK.
 #
-# INPUTS:
-#   root (str) - repo root to scan.
+# RESPONSIBILITIES
+#     - Find IaC files that are identifiable by filename alone
+#       (Terraform, Helm, Pulumi, Serverless, CDK).
+#     - Find IaC files that share a plain .yml/.yaml/.json extension
+#       with other tools (CloudFormation, Kubernetes, Ansible) by
+#       sniffing file contents for a telltale key.
+#     - Return one sorted, de-duplicated list of file paths per tool.
 #
-# RETURNS:
-#   (dict) - keys "terraform", "cloudformation", "kubernetes", "helm",
-#   "ansible", "pulumi", "serverless", "cdk", each a sorted, de-duplicated
-#   list of file paths (possibly empty).
+# PROCESS OVERVIEW
+#     1. Find Terraform, Helm, Pulumi, Serverless, and CDK files by
+#        filename/suffix.
+#     2. Walk every other .yml/.yaml/.json file and read its contents.
+#     3. If it contains an AWSTemplateFormatVersion key or a
+#        Type: "AWS::..." resource declaration, classify it as
+#        CloudFormation.
+#     4. Otherwise, if it is a .yml/.yaml file containing both
+#        "apiVersion:" and "kind:", classify it as Kubernetes.
+#     5. Otherwise, if it is a .yml/.yaml file containing both
+#        "hosts:" and "tasks:", classify it as Ansible.
+#     6. Sort and de-duplicate every tool's file list.
+#     7. Return the dict of per-tool file lists.
 #
-# RAISES/ERRORS:  None expected.
-# SIDE EFFECTS:   None (read-only).
-# CALLED BY:      main().
-# CALLS:          find_files(), walk(), read_text().
+# IMPORTANT DETAILS
+#     - CloudFormation, Kubernetes, and Ansible files all use plain
+#       .yml/.yaml/.json extensions with no distinguishing filename, so
+#       telling them apart requires looking at file contents, not just
+#       names.
+#     - The three content-sniffing checks are ordered CloudFormation,
+#       then Kubernetes, then Ansible, since a CloudFormation template
+#       could technically also contain the substring "kind:" in a
+#       resource property, but not the reverse; checking CloudFormation
+#       first avoids that ambiguity.
 #
-# EXAMPLE:
-#   scan_iac("/repo")
-#   -> {"terraform": ["/repo/main.tf"], "cloudformation": [],
-#       "kubernetes": ["/repo/k8s/deployment.yaml"], "helm": [],
-#       "ansible": [], "pulumi": [], "serverless": [], "cdk": []}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     root (str)
+#         Repo root to scan.
+#
+# RETURNS
+#     dict
+#         Keys "terraform", "cloudformation", "kubernetes", "helm",
+#         "ansible", "pulumi", "serverless", "cdk", each a sorted,
+#         de-duplicated list of file paths (possibly empty).
+#
+# FAILURE CASES
+#     - None expected.
+################################################################################
 def scan_iac(root):
     """Finds Infrastructure-as-Code files by a mix of filename (Terraform,
     Helm, Pulumi, Serverless, CDK) and content sniffing (CloudFormation,
     Kubernetes, Ansible, which all use plain .yml/.yaml/.json)."""
-    result = {"terraform": [], "cloudformation": [], "kubernetes": [], "helm": [],
-              "ansible": [], "pulumi": [], "serverless": [], "cdk": []}
-    result["terraform"] = sorted(find_files(root, suffixes=(".tf", ".tfvars")))
-    result["helm"] = sorted(find_files(root, names={"Chart.yaml"}))
-    result["pulumi"] = sorted(find_files(root, names={"Pulumi.yaml"}))
-    result["serverless"] = sorted(find_files(root, names={"serverless.yml", "serverless.yaml"}))
-    result["cdk"] = sorted(find_files(root, names={"cdk.json"}))
+    iac_findings_by_tool = {"terraform": [], "cloudformation": [], "kubernetes": [], "helm": [],
+                             "ansible": [], "pulumi": [], "serverless": [], "cdk": []}
+    iac_findings_by_tool["terraform"] = sorted(find_files(root, suffixes=(".tf", ".tfvars")))
+    iac_findings_by_tool["helm"] = sorted(find_files(root, names={"Chart.yaml"}))
+    iac_findings_by_tool["pulumi"] = sorted(find_files(root, names={"Pulumi.yaml"}))
+    iac_findings_by_tool["serverless"] = sorted(find_files(root, names={"serverless.yml", "serverless.yaml"}))
+    iac_findings_by_tool["cdk"] = sorted(find_files(root, names={"cdk.json"}))
 
     # These three overlap in file extension (.yml/.yaml/.json), so content
     # sniffing decides which bucket a file lands in. Checked in this order
@@ -1907,60 +2658,77 @@ def scan_iac(root):
         for filename in filenames:
             if not filename.endswith((".yml", ".yaml", ".json")):
                 continue
-            path = os.path.join(dirpath, filename)
-            text = read_text(path)
+            candidate_path = os.path.join(dirpath, filename)
+            text = read_text(candidate_path)
             if not text:
                 continue
             if "AWSTemplateFormatVersion" in text or re.search(r"Type:\s*['\"]?AWS::", text):
-                result["cloudformation"].append(path)
+                iac_findings_by_tool["cloudformation"].append(candidate_path)
                 continue
             if filename.endswith((".yml", ".yaml")) and "apiVersion:" in text and "kind:" in text:
-                result["kubernetes"].append(path)
+                iac_findings_by_tool["kubernetes"].append(candidate_path)
                 continue
             if filename.endswith((".yml", ".yaml")) and "hosts:" in text and "tasks:" in text:
-                result["ansible"].append(path)
+                iac_findings_by_tool["ansible"].append(candidate_path)
 
-    for key in result:
-        result[key] = sorted(set(result[key]))
-    return result
+    for tool_name in iac_findings_by_tool:
+        iac_findings_by_tool[tool_name] = sorted(set(iac_findings_by_tool[tool_name]))
+    return iac_findings_by_tool
 
 
 # ===== MAIN =====
 
-# ------------------------------------------------------------------------
-# main
+################################################################################
+# FUNCTION: main
 #
-# WHAT IT DOES:   CLI entry point. Runs every scan (languages, package
-#                 managers, containers, IaC) and prints one combined JSON
-#                 report to stdout.
-# WHY IT EXISTS:  This is what actually gets invoked when the script is
-#                 run from the command line or by the cartridge-scanner
-#                 skill.
+# PURPOSE
+#     Serves as the CLI entry point: runs every scan (languages,
+#     package managers, containers, IaC) and prints one combined JSON
+#     report to stdout. This is what actually gets invoked when the
+#     script is run from the command line or by the cartridge-scanner
+#     skill.
 #
-# INPUTS:
-#   None directly (reads sys.argv): sys.argv[1], if present, is the repo
-#   path to scan; defaults to "." (current directory) otherwise.
+# RESPONSIBILITIES
+#     - Determine which repo path to scan from the command line.
+#     - Run the language/LOC scan, preferring `scc` and falling back to
+#       fallback_loc_scan().
+#     - Run the package manager, container, and IaC scans.
+#     - Assemble every scan's results into one JSON object and print it
+#       to stdout.
 #
-# RETURNS:
-#   (None) - prints JSON to stdout as its output instead of returning a
-#   value.
+# PROCESS OVERVIEW
+#     1. Read the repo path from sys.argv[1], defaulting to "." if not
+#        given, and resolve it to an absolute path.
+#     2. Run run_scc(); if it returns None, run fallback_loc_scan()
+#        instead.
+#     3. Run scan_package_managers(), scan_containers(), and
+#        scan_iac().
+#     4. Assemble all results, plus totals_of()'s summary, into one
+#        dict.
+#     5. Print that dict as indented JSON to stdout.
 #
-# RAISES/ERRORS:  An unhandled exception from any called function would
-#                 propagate here and crash with a non-zero exit and a
-#                 traceback, none of the scan functions are expected to
-#                 raise under normal use.
-# SIDE EFFECTS:   Prints to stdout. May spawn `scc` and/or `syft`
-#                 subprocesses (via run_scc()/run_syft_conan()). Reads the
-#                 filesystem under the target path. Writes nothing.
-# CALLED BY:      The `if __name__ == "__main__":` guard at the bottom of
-#                 this file.
-# CALLS:          run_scc(), fallback_loc_scan(), scan_package_managers(),
-#                 scan_containers(), scan_iac(), totals_of().
+# IMPORTANT DETAILS
+#     - "scc_available" in the output records whether run_scc()
+#       succeeded, so the calling skill can tell a real per-language
+#       LOC/comment/complexity breakdown from the coarser
+#       fallback_loc_scan() result.
 #
-# EXAMPLE:
-#   $ python3 cartridge_scan.py /home/user/my-repo
-#   {"scc_available": true, "languages": [...], "totals": {...}, ...}
-#--------------------------------------------------------------------------
+# PARAMETERS
+#     None
+#         Reads sys.argv directly: sys.argv[1], if present, is the repo
+#         path to scan; defaults to "." otherwise.
+#
+# RETURNS
+#     None
+#         Prints JSON to stdout as its output instead of returning a
+#         value.
+#
+# FAILURE CASES
+#     - An unhandled exception from any called function would
+#       propagate here and crash with a non-zero exit and a traceback;
+#       none of the scan functions are expected to raise under normal
+#       use.
+################################################################################
 def main():
     """CLI entry point: `cartridge_scan.py [path]` (defaults to `.`).
     Runs every scan and prints one JSON object to stdout."""
