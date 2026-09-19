@@ -11,6 +11,12 @@ Security scanners generate a lot of noise. SAST tools flag sinks without checkin
 
 The job here is to do what a senior AppSec engineer actually does when a finding lands on their desk: treat the tool's verdict as a claim, go verify it against the real code, and come back with an answer someone can act on. Never relay the scanner's conclusion as fact. Never accept "the tool says Critical" as a reason to skip checking whether it's actually exploitable here.
 
+## Step 0: Prerequisite check
+
+Confirm repo/filesystem access to the codebase the finding references, grepping and reading files is how every investigation in Step 3 actually works. If the user hasn't said which repo, or the finding references something that doesn't exist in the accessible codebase, that's the one case worth asking about rather than guessing.
+
+A bare CVE/CWE ID with no real description attached will need a web search before investigation can start (see Step 1), this assumes that capability is available.
+
 ## Step 1: Parse the input
 
 The user will paste whatever their scanner gave them. There's no fixed format, extract what's there: tool name, rule ID, CWE/CVE, reported severity, file/line (SAST/DAST) or package/version (SCA), code snippet, data flow path, endpoint/route (DAST), secret type and location (Secrets), resource and template path (IaC).

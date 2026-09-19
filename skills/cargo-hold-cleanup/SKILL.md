@@ -23,6 +23,12 @@ Container findings are not SCA findings wearing a different hat. A base image CV
 - The user asks about a base image CVE, a Dockerfile-level finding, or a "running as root"/"privileged container" config finding.
 - The user asks specifically about a container finding as opposed to a general "fix this finding" that could be any type, that broader case is `patch-for-the-high-score`/`patch-boss-rush`.
 
+## Step 0: Prerequisite check
+
+Confirm this is a git repo and `git` is available, both are needed for the diff and PR steps later (Steps 6-8). If this isn't a git repo, say so and ask whether to continue read-only (investigation and a recommendation, no diff or PR) or stop.
+
+Confirm `AskUserQuestion` and `EnterPlanMode` are available, both are used throughout this skill's remediation flow.
+
 ## Step 1: Parse the input
 
 Extract from whatever's pasted: scanner/tool name, vulnerability ID (CVE/GHSA), package name and installed version, fixed-in version if one exists, the `introducedThrough` or dependency path, severity, and the image reference (repo:tag or digest) the finding was raised against. For a config finding, extract the specific control that's missing or misconfigured instead (no CVE ID exists for these).

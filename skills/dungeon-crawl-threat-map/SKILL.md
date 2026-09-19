@@ -41,6 +41,10 @@ This is also, specifically, the skill built to catch OWASP A06:2025 Insecure Des
 
 If the user instead pastes a single scanner finding and wants to know if it's exploitable, that's [`player-two-verdict`](../player-two-verdict)'s job, not this one. This skill builds the big picture; that one verifies a specific claim.
 
+## Step 0: Prerequisite check
+
+Confirm the target path (the repo, service, or directory the user named) exists and is readable. This skill has no scripts and no network dependency, it reasons directly over repo files, so there's nothing else to check here. The scope decision (single service vs. a large monorepo) is a judgment call, not an environment check, that stays in Step 1.
+
 ## Step 1: Recon the codebase
 
 Figure out what you're actually looking at before modeling anything.

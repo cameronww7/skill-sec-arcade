@@ -20,6 +20,14 @@ A dependency usually gets added for a good reason: a one-line import, one functi
 
 If the user just wants an inventory (what exists, how many, what package managers), that's `cartridge-scanner`'s job, run it first if that inventory doesn't already exist in the conversation.
 
+## Step 0: Prerequisite check
+
+Confirm `python3` is on PATH, `${CLAUDE_PLUGIN_ROOT}/scripts/dead_weight_scan.py` requires it and this skill can't run without it. If it's missing, stop and tell the user plainly.
+
+Confirm the target path exists and is readable.
+
+The `usage` phase (Step 1) is fully local and needs no network access. The `health` phase (Step 5) requires live network access to package registries, note that plainly up front so the user isn't surprised later, but don't block on it here, the usage-only path still works without network.
+
 ## Step 1: Run the local usage scan
 
 ```

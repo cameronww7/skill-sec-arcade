@@ -23,11 +23,17 @@ If the finding is a container image finding (base image OS package, build-instal
 
 On a bare "fix this" with no urgency/speed signal either way, default to `patch-for-the-high-score`, the safer, context-loaded path. Only take this skill when the request itself signals speed ("quick," "just," "rush") or explicitly opts out of the full workflow.
 
-## Step 1: Parse & smoke test
+## Step 0: Prerequisite check
+
+Confirm this is a git repo (`git rev-parse --show-toplevel`) and confirm the current branch (`git branch --show-current`). If this isn't a git repo, stop and ask rather than guessing, the fix, diff, and PR steps all depend on it.
+
+Confirm `AskUserQuestion` and `EnterPlanMode` are available, both are used later in this skill's flow (Step 4 onward).
+
+## Step 1: Parse the finding
 
 Extract from whatever's pasted: tool name, rule ID, CWE/CVE, reported severity, file/line or package/version, code snippet, secret type/location, resource/template path. If a critical field like a line number is missing, find it yourself with grep or search rather than asking. If a bare CVE/CWE ID has no real description attached, web search it before going further, you need to know what the vulnerability actually is.
 
-Confirm this is a git repo (`git rev-parse --show-toplevel`), confirm the current branch (`git branch --show-current`), confirm any file path the finding names actually exists in this working tree. If something doesn't match, stop and ask rather than guessing.
+Confirm any file path the finding names actually exists in this working tree. If it doesn't, stop and ask rather than guessing.
 
 ## Step 2: Classify
 

@@ -17,22 +17,22 @@ This skill takes an already-generated threat model and distills it down to a fix
 - The user asks to "condense," "summarize," or "shrink" an existing threat model.
 - Another workflow (finding review, remediation) needs quick answers to "how does auth work here" or "what are this app's core business rules" without reading the full threat model.
 
-If no threat model exists yet, this skill's job is to get one made first (Step 1), not to improvise context from a partial look at the repo.
+If no threat model exists yet, this skill's job is to get one made first (Step 0), not to improvise context from a partial look at the repo.
 
-## Step 1: Find the source artifact
+## Step 0: Prerequisite check
 
 Look for `.SEC-Arcade-save_states/THREAT_MODEL.md` in the target repo (or the path the user names). This is the only source of truth this skill condenses, don't fabricate context from a partial scan of the repo if it's missing.
 
 If it doesn't exist, ask with `AskUserQuestion`, two options:
 
-1. **Run dungeon-crawl-threat-map now** (recommended) - if chosen, follow [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map)'s own `SKILL.md` in full, including its own save step, to produce `THREAT_MODEL.md`, then continue to Step 2.
+1. **Run dungeon-crawl-threat-map now** (recommended) - if chosen, follow [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map)'s own `SKILL.md` in full, including its own save step, to produce `THREAT_MODEL.md`, then continue to Step 1.
 2. **I'll generate it myself later** - stop here, don't proceed with a thin or guessed context file.
 
-## Step 2: Read the full threat model
+## Step 1: Read the full threat model
 
 Read `THREAT_MODEL.md` in full before condensing anything.
 
-## Step 3: Condense into the fixed structure
+## Step 2: Condense into the fixed structure
 
 Pull from specific sections of the source, don't re-derive anything from the repo directly:
 
@@ -47,7 +47,7 @@ No citations needed, this is a summary artifact for machine consumption, not an 
 
 If `THREAT_MODEL.md` doesn't have the expected section headers (hand-edited, or produced by something other than `dungeon-crawl-threat-map`), don't fail silently and don't guess. Condense whatever sections do exist using the same mapping logic, note in the Overview which of the six target sections had no matching source material, and skip that target section rather than inventing content for it.
 
-## Step 4: Enforce the 50-line cap
+## Step 3: Enforce the 50-line cap
 
 Count lines in the draft, including headers and blank lines. If over 50, trim in this order, stop as soon as it fits:
 
@@ -57,11 +57,11 @@ Count lines in the draft, including headers and blank lines. If over 50, trim in
 
 Never trim Overview, Identity & Session, or App Hardening, those are what a fix or false-positive review needs most.
 
-## Step 5: Check for sibling artifacts
+## Step 4: Check for sibling artifacts
 
 Look in the same `.SEC-Arcade-save_states/` folder for `CARTRIDGE_SCAN.md` and `DEAD_WEIGHT_REPORT.md`. If present, reference their paths in the Pointers section for dependency/supply-chain and container depth, don't duplicate their content here.
 
-## Step 6: Write the file
+## Step 5: Write the file
 
 Write directly to `.SEC-Arcade-save_states/MINI_MAP.md` in the target repo, overwriting any existing one. **Do not ask first.** This is a deliberate exception to the general save convention in `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: that convention exists because a full report is something a human decides whether to keep, this file exists purely as ambient, machine-readable context for other skills to load, prompting every run would just be friction against its own purpose.
 
@@ -99,7 +99,7 @@ _Condensed from `.SEC-Arcade-save_states/THREAT_MODEL.md`, generated [date], tar
 `.SEC-Arcade-save_states/THREAT_MODEL.md`[, plus CARTRIDGE_SCAN.md / DEAD_WEIGHT_REPORT.md if present]
 ```
 
-## Step 7: Confirm to the user
+## Step 6: Confirm to the user
 
 Tell the user the file was written and give the path. Since the file is short by design, show it in full in the chat rather than a truncated preview.
 
@@ -111,4 +111,4 @@ Tell the user the file was written and give the path. Since the file is short by
 
 ## Reference material
 
-- `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention this skill deliberately bypasses at Step 6, still the source of truth for the `.SEC-Arcade-save_states/` folder location and naming pattern.
+- `${CLAUDE_PLUGIN_ROOT}/references/save-states.md`: the shared save-to-file convention this skill deliberately bypasses at Step 5, still the source of truth for the `.SEC-Arcade-save_states/` folder location and naming pattern.

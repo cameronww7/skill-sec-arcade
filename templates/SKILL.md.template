@@ -12,6 +12,10 @@ Brief statement of what this skill helps with.
 - Trigger condition 1
 - Trigger condition 2
 
+## Step 0: Prerequisite check
+
+Before doing any real work, verify whatever this skill actually depends on and would otherwise fail on unclearly partway through: required binaries or CLIs, being in a git repo if it needs one, an upstream artifact another skill produces, or a tool (`AskUserQuestion`, `EnterPlanMode`, `Agent`) it assumes is available. If something's missing, stop and tell the user plainly rather than failing later with a confusing error. Skip this section only if the skill genuinely has no dependency beyond reading the repo it's already been pointed at.
+
 ## Steps / Approach
 
 1. ...

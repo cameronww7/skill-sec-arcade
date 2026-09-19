@@ -21,11 +21,17 @@ This is the inverse of [`player-two-verdict`](../player-two-verdict): that skill
 
 If the user instead pastes a raw, untriaged scanner finding with no verdict attached, that's the other skill's job, not this one. This skill needs an existing FP claim to challenge; it doesn't do first-pass triage.
 
+## Step 0: Prerequisite check
+
+This skill's entire value depends on reaching its own conclusion, not on confirming one that's already sitting in the conversation. If the original FP verdict was produced earlier in this same session (for example by [`player-two-verdict`](../player-two-verdict) running right before this), or if the user has been discussing the finding with you before pasting the verdict, your own read of it is already anchored to that reasoning. Running the "independent" audit in that same context isn't independent, it's the same judgment re-reading its own homework and agreeing with itself. Step 1 below exists to guarantee real isolation, not just a claimed one.
+
+Confirm an `Agent`-style tool is available that can spawn a fresh subagent with a fresh `subagent_type` (e.g. `general-purpose`), explicitly not a `fork` type or any option documented as inheriting the caller's context, since a fork's entire premise is shared memory with this conversation, which defeats the isolation this skill depends on.
+
+If your environment genuinely has no way to spawn an isolated subagent, don't silently do the audit yourself in the shared context and present it as independent. Say plainly that this conversation already contains prior context on the finding and a truly independent check isn't possible here, and recommend the user open a fresh session and paste the FP verdict there instead.
+
 ## Step 1: Isolate the review
 
-This skill's entire value depends on reaching its own conclusion, not on confirming one that's already sitting in the conversation. If the original FP verdict was produced earlier in this same session (for example by [`player-two-verdict`](../player-two-verdict) running right before this), or if the user has been discussing the finding with you before pasting the verdict, your own read of it is already anchored to that reasoning. Running the "independent" audit in that same context isn't independent, it's the same judgment re-reading its own homework and agreeing with itself.
-
-Do not perform Steps 2-6 yourself in this conversation. Before anything else, delegate the entire audit to a fresh subagent, one that starts with no memory of this conversation, not a fork or continuation of it. If an `Agent`-style tool is available, use it with a fresh `subagent_type` (e.g. `general-purpose`), explicitly not a `fork` type or any option documented as inheriting the caller's context, since a fork's entire premise is shared memory with this conversation, which defeats the isolation this step exists to guarantee. Give that subagent nothing but:
+Do not perform Steps 2-6 yourself in this conversation. Delegate the entire audit to the fresh subagent confirmed available in Step 0, one that starts with no memory of this conversation, not a fork or continuation of it. Give that subagent nothing but:
 
 - The raw pasted material exactly as the user provided it: the original finding, the FP verdict, and its justification.
 - The repo location/access it needs to investigate.
@@ -34,8 +40,6 @@ Do not perform Steps 2-6 yourself in this conversation. Before anything else, de
 Do not pass along your own read of the finding, anything said earlier in this session about it, or any hint of what verdict a prior review (yours or anyone else's) reached. The subagent's conclusion has to come from the raw material and the repo alone, or the isolation is theater.
 
 Wait for the subagent to finish, then relay its finished output back to the user as-is. Don't edit its verdict, soften it, add commentary on top of it, or skip the delegation because the case looks obvious from where you're sitting, that instinct is exactly the failure mode this skill exists to catch.
-
-If your environment genuinely has no way to spawn an isolated subagent, don't silently do the audit yourself in the shared context and present it as independent. Say plainly that this conversation already contains prior context on the finding and a truly independent check isn't possible here, and recommend the user open a fresh session and paste the FP verdict there instead.
 
 ## Step 2: Parse the input
 

@@ -9,7 +9,7 @@ This repository is a Claude Code plugin named `sec-arcade`: an arcade-themed col
 - `references/` — shared markdown reference docs (OWASP mappings, attack-vector data, remediation playbooks, registry health-signal thresholds, etc.) consumed by multiple skills rather than duplicated per-skill. Seven of the nine skills use at least one of these; the two that don't (`player-two-verdict`, `tilt-check`) are self-contained investigation/triage skills that work directly off a pasted finding.
 - `templates/` — `SKILL.md.template`, the scaffold new skills are authored from.
 
-When adding a new skill, follow the existing `skills/*/SKILL.md` pattern (frontmatter + themed heading + "Why this skill exists" + numbered "Step N" sections) rather than inventing a new shape.
+When adding a new skill, follow the existing `skills/*/SKILL.md` pattern (frontmatter + themed heading + "Why this skill exists" + numbered "Step N" sections, starting with a `Step 0: Prerequisite check` that verifies whatever that skill needs before its real work starts) rather than inventing a new shape.
 
 ## Why the plugin-only distribution model was chosen
 

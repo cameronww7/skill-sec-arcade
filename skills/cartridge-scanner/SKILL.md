@@ -21,6 +21,14 @@ This skill is that first pass. You "insert the cartridge" and it reads what's on
 
 If the user wants an architecture diagram and STRIDE threat model, that's [`dungeon-crawl-threat-map`](../dungeon-crawl-threat-map). If they've pasted a specific scanner finding and want a verdict, that's [`player-two-verdict`](../player-two-verdict).
 
+## Step 0: Prerequisite check
+
+Confirm `python3` is on PATH, `${CLAUDE_PLUGIN_ROOT}/scripts/cartridge_scan.py` requires it and this skill can't run without it. If it's missing, stop and tell the user plainly rather than attempting the scan.
+
+Confirm the target path (the repo, or the specific directory the user named) exists and is readable.
+
+`scc` is an optional dependency: the script self-detects whether it's installed and falls back to a rough count if not (see Step 1), so it doesn't need a separate check here.
+
 ## Step 1: Run the scan
 
 Run the helper script against the repo (or the specific directory the user names):
