@@ -16,6 +16,9 @@
 
 # 🕹️ Cartridge Scanner
 
+**Operational Title: Repo Security Inventory**
+Surveys a repo's languages, dependencies, IaC, and containers, then recommends what security scanning tools it actually needs.
+
 *A cabinet in the [sec-arcade](../../): insert token when you want a language/dependency/IaC/container inventory of a repo, before any deep scanning starts.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

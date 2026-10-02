@@ -14,6 +14,9 @@
 
 # 🏋️ Dead Weight Detector
 
+**Operational Title: Dependency Health Auditor**
+Measures how much each dependency is actually used in first-party code, cross-checks it against live registry health, and recommends keep, inline, watch, or flag.
+
 *A cabinet in the [sec-arcade](../../): insert token when you want to know if a dependency is actually pulling its weight, or just dead weight in the pack.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

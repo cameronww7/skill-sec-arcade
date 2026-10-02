@@ -10,6 +10,9 @@
 
 # 🚨 Tilt Check
 
+**Operational Title: False-Positive Verdict Auditor**
+Adversarially re-audits an existing False Positive verdict, via a fresh isolated subagent, before agreeing to close it.
+
 *A cabinet in the [sec-arcade](../../): insert token when someone, human or AI, has already called a finding a False Positive and you want a second, skeptical opinion before it gets suppressed for real.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

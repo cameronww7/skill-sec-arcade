@@ -10,6 +10,9 @@
 
 # 🏆 Patch for the High Score
 
+**Operational Title: Full Remediation Workflow**
+Loads app context, investigates a finding to a rigorous standard, judges patch-vs-upgrade tradeoffs, then plans, applies, and PRs the fix.
+
 *A cabinet in the [sec-arcade](../../): insert token when you want a finding actually fixed, deliberately, with real app context behind the call.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

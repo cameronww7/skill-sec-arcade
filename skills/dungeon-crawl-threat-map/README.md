@@ -18,6 +18,9 @@ ______ _   _ _   _ _____  _____ _____ _   _   _____ ______  ___  _    _ _
 
 # 🗺️ Dungeon Crawl: Threat Map
 
+**Operational Title: Codebase Threat Modeler**
+Maps a repo's architecture into an ASCII diagram and threat models it with STRIDE, mapped to the OWASP Top 10.
+
 *A cabinet in the [sec-arcade](../../): insert token when you want to understand a codebase's shape, not just scan its lines.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

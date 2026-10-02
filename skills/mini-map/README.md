@@ -11,6 +11,9 @@
 
 # 🧭 Mini-Map
 
+**Operational Title: Threat Model Condenser**
+Compresses an existing full threat model into a hard-capped ~50-line context file other skills can load quickly.
+
 *A cabinet in the [sec-arcade](../../): insert token when you want a 50-line context file other skills can load instead of the full dungeon map.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

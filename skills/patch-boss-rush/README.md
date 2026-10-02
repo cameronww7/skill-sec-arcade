@@ -10,6 +10,9 @@
 
 # ⚡ Patch Boss Rush
 
+**Operational Title: Fast Finding Fixer**
+Runs a fast, self-contained remediation pass on one finding (sanity check, fix plan, diff, optional PR), no delegation.
+
 *A cabinet in the [sec-arcade](../../): insert token when a finding looks simple and you want it fixed now, no context-loading ceremony.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

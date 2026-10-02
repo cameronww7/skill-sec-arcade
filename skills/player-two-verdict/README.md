@@ -18,6 +18,9 @@ __      ________ _____  _____ _____ _____ _______
 
 # 2️⃣ Player Two Verdict
 
+**Operational Title: Scanner Finding Investigator**
+Independently investigates a pasted scanner finding against the real repo and returns a true positive, false positive, or needs-more-context verdict with cited evidence.
+
 *A cabinet in the [sec-arcade](../../): insert token when you paste a Semgrep/Snyk/Trivy/etc. finding, a CVE/CWE, or ask "is this actually exploitable?"*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)

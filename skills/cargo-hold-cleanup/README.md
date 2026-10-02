@@ -11,6 +11,9 @@
 
 # 📦 Cargo Hold Cleanup
 
+**Operational Title: Container Finding Remediator**
+Fixes container and base-image scan findings (CVEs, root-user configs, stray build binaries) before handing app-dependency findings to the patch skills.
+
 *A cabinet in the [sec-arcade](../../): insert token when a container image finding needs fixing, base image, build-installed binary, or config, not a dependency manifest.*
 
 ![Claude Code Skill](https://img.shields.io/badge/claude--code-skill-5A67D8)
