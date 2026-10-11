@@ -1,0 +1,17 @@
+{
+  "svc-payments-ci-deployer": {
+    "tags": {"env": "prod", "owner": "payments-team"},
+    "role_last_used_date": "2026-07-01T00:00:00Z",
+    "collection_error": null
+  },
+  "svc-data-reader-role": {
+    "tags": {"env": "prod", "owner": "data-team"},
+    "role_last_used_date": "2026-06-15T00:00:00Z",
+    "collection_error": null
+  },
+  "svc-external-partner-role": {
+    "tags": {"env": "sandbox", "owner": "partner-integrations"},
+    "role_last_used_date": null,
+    "collection_error": null
+  }
+}

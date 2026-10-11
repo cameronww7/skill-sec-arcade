@@ -1,0 +1,12 @@
+{
+  "Events": [
+    {
+      "EventId": "11111111-1111-1111-1111-111111111111",
+      "EventName": "ListBucket",
+      "EventSource": "s3.amazonaws.com",
+      "Username": "svc-payments-ci-deployer",
+      "EventTime": "2026-07-01T00:00:00Z",
+      "CloudTrailEvent": "{\"eventVersion\":\"1.08\",\"userIdentity\":{\"type\":\"AssumedRole\",\"arn\":\"arn:aws:sts::123456789012:assumed-role/svc-payments-ci-deployer/i-0123456789abcdef0\",\"sessionContext\":{\"sessionIssuer\":{\"type\":\"Role\",\"arn\":\"arn:aws:iam::123456789012:role/svc-payments-ci-deployer\",\"accountId\":\"123456789012\"}}},\"eventSource\":\"s3.amazonaws.com\",\"eventName\":\"ListBucket\"}"
+    }
+  ]
+}

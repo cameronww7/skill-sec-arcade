@@ -1,0 +1,25 @@
+{
+  "JobStatus": "COMPLETED",
+  "JobCreationDate": "2026-07-01T00:00:00Z",
+  "JobCompletionDate": "2026-07-01T00:00:05Z",
+  "ServicesLastAccessed": [
+    {
+      "ServiceName": "Amazon S3",
+      "ServiceNamespace": "s3",
+      "LastAuthenticated": "2026-07-01T00:00:00Z",
+      "LastAuthenticatedEntity": "arn:aws:iam::123456789012:role/svc-payments-ci-deployer",
+      "TotalAuthenticatedEntities": 1,
+      "TrackedActionsLastAccessed": [
+        {"ActionName": "s3:ListBucket", "LastAccessedTime": "2026-07-01T00:00:00Z"},
+        {"ActionName": "s3:GetObject", "LastAccessedTime": null}
+      ]
+    },
+    {
+      "ServiceName": "AWS Identity and Access Management",
+      "ServiceNamespace": "iam",
+      "LastAuthenticated": null,
+      "TotalAuthenticatedEntities": 0,
+      "TrackedActionsLastAccessed": []
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "groups": {},
+  "users": {},
+  "roles": {
+    "AROAEXAMPLEPAYMENTS": {
+      "arn": "arn:aws:iam::123456789012:role/svc-payments-ci-deployer",
+      "name": "svc-payments-ci-deployer",
+      "inline_policies": {
+        "policyid-payments-inline-1": "InlineAdminish"
+      },
+      "customer_managed_policies": {},
+      "aws_managed_policies": {},
+      "is_excluded": false
+    }
+  },
+  "aws_managed_policies": {},
+  "customer_managed_policies": {},
+  "inline_policies": {
+    "policyid-payments-inline-1": {
+      "PolicyName": "InlineAdminish",
+      "PolicyId": "policyid-payments-inline-1",
+      "PolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {"Effect": "Allow", "Action": ["iam:CreatePolicyVersion", "iam:PassRole", "s3:*"], "Resource": "*"}
+        ]
+      },
+      "AttachedTo": {"roles": ["svc-payments-ci-deployer"], "groups": [], "users": []},
+      "PrivilegeEscalation": {
+        "severity": "high",
+        "description": "<p>Privilege escalation risk description.</p>",
+        "findings": [
+          {"type": "CreateNewPolicyVersion", "actions": ["iam:createpolicyversion"]}
+        ],
+        "links": {"CreateNewPolicyVersion": "https://pathfinding.cloud/paths/iam-001"}
+      },
+      "DataExfiltration": {
+        "severity": "medium",
+        "description": "<p>Data exfiltration risk description.</p>",
+        "findings": ["s3:GetObject"]
+      },
+      "ResourceExposure": {
+        "severity": "high",
+        "description": "<p>Resource exposure risk description.</p>",
+        "findings": ["iam:CreatePolicyVersion", "iam:PassRole", "s3:PutBucketPolicy", "s3:PutBucketAcl"]
+      },
+      "ServiceWildcard": {
+        "severity": "medium",
+        "description": "<p>Service wildcard risk description.</p>",
+        "findings": ["s3"]
+      },
+      "CredentialsExposure": {
+        "severity": "high",
+        "description": "<p>Credentials exposure risk description.</p>",
+        "findings": []
+      },
+      "InfrastructureModification": {
+        "severity": "low",
+        "description": "",
+        "findings": ["iam:CreatePolicyVersion", "iam:PassRole", "s3:CreateBucket"]
+      },
+      "is_excluded": false
+    }
+  },
+  "exclusions": {},
+  "links": {}
+}

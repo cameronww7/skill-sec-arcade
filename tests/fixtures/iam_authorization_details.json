@@ -1,0 +1,198 @@
+{
+  "UserDetailList": [],
+  "GroupDetailList": [],
+  "RoleDetailList": [
+    {
+      "Path": "/",
+      "RoleName": "svc-payments-ci-deployer",
+      "RoleId": "AROAEXAMPLEPAYMENTS",
+      "Arn": "arn:aws:iam::123456789012:role/svc-payments-ci-deployer",
+      "CreateDate": "2025-01-01T00:00:00Z",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "ec2.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "InstanceProfileList": [],
+      "RolePolicyList": [
+        {
+          "PolicyName": "InlineAdminish",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "iam:CreatePolicyVersion",
+                  "iam:PassRole",
+                  "s3:*"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": [],
+      "Tags": [
+        {
+          "Key": "env",
+          "Value": "prod"
+        },
+        {
+          "Key": "owner",
+          "Value": "payments-team"
+        }
+      ]
+    },
+    {
+      "Path": "/",
+      "RoleName": "svc-data-reader-role",
+      "RoleId": "AROAEXAMPLEDATAREADER",
+      "Arn": "arn:aws:iam::123456789012:role/svc-data-reader-role",
+      "CreateDate": "2025-02-01T00:00:00Z",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "InstanceProfileList": [],
+      "RolePolicyList": [
+        {
+          "PolicyName": "ReadOnlyish",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dynamodb:GetItem",
+                  "dynamodb:Query"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": [
+        {
+          "PolicyName": "DataReadExtra",
+          "PolicyArn": "arn:aws:iam::123456789012:policy/DataReadExtra"
+        }
+      ],
+      "Tags": [
+        {
+          "Key": "env",
+          "Value": "prod"
+        },
+        {
+          "Key": "owner",
+          "Value": "data-team"
+        }
+      ]
+    },
+    {
+      "Path": "/",
+      "RoleName": "svc-external-partner-role",
+      "RoleId": "AROAEXAMPLEEXTERNALPARTNER",
+      "Arn": "arn:aws:iam::123456789012:role/svc-external-partner-role",
+      "CreateDate": "2025-03-01T00:00:00Z",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "arn:aws:iam::999999999999:root"
+            },
+            "Action": "sts:AssumeRole"
+          },
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity"
+          }
+        ]
+      },
+      "InstanceProfileList": [],
+      "RolePolicyList": [
+        {
+          "PolicyName": "KmsAccess",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "kms:Decrypt",
+                  "kms:Encrypt"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": [],
+      "Tags": [
+        {
+          "Key": "env",
+          "Value": "sandbox"
+        },
+        {
+          "Key": "owner",
+          "Value": "partner-integrations"
+        }
+      ]
+    }
+  ],
+  "Policies": [
+    {
+      "PolicyName": "DataReadExtra",
+      "Arn": "arn:aws:iam::123456789012:policy/DataReadExtra",
+      "DefaultVersionId": "v1",
+      "PolicyVersionList": [
+        {
+          "VersionId": "v1",
+          "IsDefaultVersion": true,
+          "Document": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dynamodb:Scan"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "PolicyId": "ANPAEXAMPLEDATAREADEXTRA",
+      "Path": "/",
+      "AttachmentCount": 1,
+      "PermissionsBoundaryUsageCount": 0,
+      "IsAttachable": true,
+      "CreateDate": "2025-02-01T00:00:00Z",
+      "UpdateDate": "2025-02-01T00:00:00Z"
+    }
+  ]
+}
