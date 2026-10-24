@@ -1,0 +1,7 @@
+{
+  "name": "fixture-short-name-config",
+  "version": "1.0.0",
+  "devDependencies": {
+    "eslint-plugin-react": "^7.33.0"
+  }
+}

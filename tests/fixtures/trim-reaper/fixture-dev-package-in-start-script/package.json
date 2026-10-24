@@ -1,0 +1,11 @@
+{
+  "name": "fixture-dev-package-in-start-script",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "nodemon server.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}
