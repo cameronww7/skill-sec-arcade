@@ -13,6 +13,10 @@ A fast, no-dependency look at a Claude Code skill you don't trust yet, no Python
 
 A Claude Code skill that reads another skill's files directly, no script, no network, no external reference file, never executes or installs anything found in them, and judges them against a Critical/High/Medium/Low security checklist written directly into its own `SKILL.md`.
 
+## Also consider: NVIDIA SkillSpector
+
+This skill is small, Claude-Code-native, and built by one person as a quick, no-dependency read-through, not a rigorous scanner. If you want something more battle-tested for this exact job, look at [NVIDIA SkillSpector](https://github.com/nvidia/skillspector): an open-source, Apache-2.0-licensed security scanner built specifically for AI agent skills (Claude Code, Codex CLI, Gemini CLI, and more), backed by NVIDIA and widely adopted (27,000+ GitHub stars at last check). It runs 71 deterministic static-analysis patterns across 17 categories (prompt injection, data exfiltration, privilege escalation, supply chain, MCP least-privilege and tool-poisoning checks, and more), with an optional LLM semantic pass layered on top, live dependency-CVE lookups against OSV.dev, and terminal/JSON/Markdown/SARIF output with a 0-100 risk score. Unlike this skill, its static layer is deterministic and repeatable, not a fresh judgment call every run. It's also the primary research source behind this skill's own checklist (tagged **NV** in `SKILL.md`'s Security Checklist section). If you only have budget for one scanner, it deserves serious consideration over what's in this repo.
+
 ## Overview
 
 `bootleg-cartridge-check` is the deliberately safer design: a script reads the target first, so the model only ever reasons over small, already-matched snippets instead of the target's raw text. That costs a Python dependency and a fixed set of regex patterns, which has to skip entire categories no regex can judge: coercion-by-urgency phrasing, jailbreak framing, slopsquatting setups, invocation-count-gated behavior, and more.

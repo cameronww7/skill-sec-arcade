@@ -12,6 +12,10 @@ Statically scans a Claude Code skill or plugin you don't yet trust, before you i
 
 A Claude Code skill that reads another skill's files, never executes, imports, or installs anything found in them, and reports back a static scan of known-bad patterns: credential/host overrides, unsafe deserialization, prompt-injection phrasing, persistence and tool-shadowing tricks, symlink abuse, privileged container config, and more. Catalog and rule IDs live in `references/bootleg-cartridge-rule-catalog.md`.
 
+## Also consider: NVIDIA SkillSpector
+
+This skill is small, Claude-Code-native, and built by one person. If you want something more battle-tested for this exact job, look at [NVIDIA SkillSpector](https://github.com/nvidia/skillspector): an open-source, Apache-2.0-licensed security scanner built specifically for AI agent skills (Claude Code, Codex CLI, Gemini CLI, and more), backed by NVIDIA and widely adopted (27,000+ GitHub stars at last check). It runs 71 deterministic static-analysis patterns across 17 categories (prompt injection, data exfiltration, privilege escalation, supply chain, MCP least-privilege and tool-poisoning checks, and more), with an optional LLM semantic pass layered on top, live dependency-CVE lookups against OSV.dev, and terminal/JSON/Markdown/SARIF output with a 0-100 risk score, built for exactly the "gate installs in CI" use case this repo's own architecture notes call out as the right place to run this kind of check. It's also the primary research source behind this skill's own checklist (tagged **NV** in `bootleg-cartridge-rule-catalog.md`). If you only have budget for one scanner, it deserves serious consideration over what's in this repo.
+
 ## Overview
 
 A real game cartridge is a sealed, known-good artifact. A bootleg one can look identical while carrying something you didn't ask for. A Claude Code skill has the same problem: it's prose and scripts that an agent follows with real Bash/file/credential access, and a malicious or compromised one can carry exactly the attacks this skill's rule catalog documents.
