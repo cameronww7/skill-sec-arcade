@@ -1,4 +1,20 @@
-# 🕹️ Bootleg Cartridge Check
+```
+ ____   ___   ___ _____ _     _____ ____ 
+| __ ) / _ \ / _ \_   _| |   | ____/ ___|
+|  _ \| | | | | | || | | |   |  _|| |  _ 
+| |_) | |_| | |_| || | | |___| |__| |_| |
+|____/ \___/ \___/ |_| |_____|_____\____|
+
+  ____    _    ____ _____ ____  ___ ____   ____ _____    ____ _   _ _____ ____ _  __
+ / ___|  / \  |  _ \_   _|  _ \|_ _|  _ \ / ___| ____|  / ___| | | | ____/ ___| |/ /
+| |     / _ \ | |_) || | | |_) || || | | | |  _|  _|   | |   | |_| |  _|| |   | ' / 
+| |___ / ___ \|  _ < | | |  _ < | || |_| | |_| | |___  | |___|  _  | |__| |___| . \ 
+ \____/_/   \_\_| \_\|_| |_| \_\___|____/ \____|_____|  \____|_| |_|_____\____|_|\_\
+```
+
+*Accent: Counterfeit Silver. The dull sheen of a cartridge that looks right until you check the board inside.*
+
+# 🔍 Bootleg Cartridge Check
 
 **Operational Title: Third-Party Skill Security Scan**
 Statically scans a Claude Code skill or plugin you don't yet trust, before you install it, enable it, or merge it.
@@ -30,6 +46,60 @@ Run it, get back:
 - One verdict: BLOCK, REVIEW, or ALLOW
 - A fixed disclaimer every report carries, so a clean result is never mistaken for a safety guarantee
 
+## How it flows
+
+```
+    ┌──────────────────────────────────────────┐
+    │ "Scan this skill before I install it"    │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 0. Prerequisite check                     │
+    │ python3 on PATH? target looks like a      │
+    │ skill? confirm read-only with the user    │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 1. Quarantine                             │
+    │ target path stays read-only for the       │
+    │ whole run, never a working directory      │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 2. Run bootleg_cartridge_scan.py          │
+    │ read-only, no network, never executes     │
+    │ anything in the target -> one JSON blob   │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 3. Build the report from that JSON       │
+    │ never by re-reading the target's raw      │
+    │ files to form a judgment                  │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 4-5. Coverage gaps + URLs found           │
+    │ binaries/archives/symlinks called out,    │
+    │ URLs listed, never fetched                │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 6. Verdict: BLOCK / REVIEW / ALLOW        │
+    │ + fixed disclaimer, every run             │
+    └──────────────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────────────────────────────────────┐
+    │ 7. Offer to save                          │
+    └──────────────────────────────────────────┘
+```
+
 ## Prerequisites
 
 - [Claude Code](https://claude.com/claude-code) installed and configured
@@ -40,10 +110,32 @@ Run it, get back:
 
 This skill ships as part of the [`sec-arcade`](https://github.com/cameronww7/skill-sec-arcade) Claude Code plugin.
 
+### Option 1: Install the whole arcade (recommended)
+
 ```bash
 /plugin marketplace add cameronww7/skill-sec-arcade
 /plugin install sec-arcade
 ```
+
+You get this skill plus every other skill added to the arcade over time.
+
+### Option 2: Just this skill
+
+```bash
+# personal, applies in every project
+git clone --depth 1 https://github.com/cameronww7/skill-sec-arcade.git /tmp/sec-arcade
+cp -r /tmp/sec-arcade/skills/bootleg-cartridge-check ~/.claude/skills/
+mkdir -p ~/.claude/sec-arcade-standalone/scripts ~/.claude/sec-arcade-standalone/references
+cp /tmp/sec-arcade/scripts/bootleg_cartridge_scan.py ~/.claude/sec-arcade-standalone/scripts/
+cp /tmp/sec-arcade/references/bootleg-cartridge-rule-catalog.md /tmp/sec-arcade/references/save-states.md \
+  ~/.claude/sec-arcade-standalone/references/
+
+# project-level, this repo only
+mkdir -p .claude/skills
+cp -r /tmp/sec-arcade/skills/bootleg-cartridge-check .claude/skills/
+```
+
+`SKILL.md` references its script and reference docs via `${CLAUDE_PLUGIN_ROOT}/scripts/...` and `${CLAUDE_PLUGIN_ROOT}/references/...`, an environment variable Claude Code only sets automatically for a full plugin install. For this standalone copy to work, set it yourself before launching Claude Code, e.g. add `export CLAUDE_PLUGIN_ROOT=~/.claude/sec-arcade-standalone` to your shell profile. Installing the whole arcade (Option 1) handles this automatically.
 
 ## Usage
 
@@ -57,12 +149,43 @@ Is this plugin safe? Check it with bootleg-cartridge-check.
 
 The skill runs `scripts/bootleg_cartridge_scan.py` against the path, reads the resulting JSON, and writes a structured markdown report with a BLOCK/REVIEW/ALLOW verdict.
 
+### Example run (excerpt)
+
+```
+# Bootleg Cartridge Check: suspicious-skill/
+
+## Verdict: BLOCK
+
+A Critical finding: ANTHROPIC_BASE_URL in settings.json points at a
+non-Anthropic host, a credential-exfiltration pattern.
+
+## Findings
+
+### Critical
+| Rule | File:Line | Confidence | Source | Description |
+|---|---|---|---|---|
+| BC-C01 | settings.json | High | Cisco | ANTHROPIC_BASE_URL points at a
+non-Anthropic host (CVE-2026-21852 family). |
+| BC-C03 | docs/vid.mp4 | High | Cisco | Symlink named `vid.mp4`
+secretly targets `.mcp.json` (SymJack). |
+
+## Coverage Gaps
+| File | Reason |
+|---|---|
+| docs/archive.7z | archive format not supported for inspection in
+this version |
+```
+
 ## Limitations
 
 - **Static only.** No semantic/LLM review step in this version, by design: this repo has no sandboxed execution path, and running an LLM judge in the same session that holds Bash/file/credential access is the exact placement the underlying research flags as weakest. See `references/bootleg-cartridge-rule-catalog.md`'s "Deferred" section for what that tradeoff costs in recall.
 - A reworded attack that avoids every documented phrasing will not be caught. This is a known-pattern scanner, not a general-purpose intent classifier.
 - The known-malicious domain/IP list is a small seed list, not a maintained threat-intel feed.
 - A clean result ("ALLOW") means no known indicator was found in this pass. It is not a safety guarantee, and it does not survive the target's own contents changing later. Re-scan on every content change.
+
+## Next cabinet
+
+[`cartridge-peek`](../cartridge-peek) is the no-script sibling: the same checklist, read directly instead of regexed, no Python dependency at all, for when a quick read-through is enough or Python isn't available. It can also catch categories this skill's static rules have to defer entirely.
 
 ## License
 
