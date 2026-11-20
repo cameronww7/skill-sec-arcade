@@ -21,7 +21,7 @@
 A leveling-up arcade of [Claude Code](https://claude.com/claude-code) skills for AppSec and security engineering. Insert token, learn a skill, boss fight the vuln.
 
 ![Claude Code Plugin](https://img.shields.io/badge/claude--code-plugin-5A67D8)
-![Skills](https://img.shields.io/badge/skills-11-brightgreen)
+![Skills](https://img.shields.io/badge/skills-13-brightgreen)
 ![Focus](https://img.shields.io/badge/focus-AppSec-critical)
 ![License](https://img.shields.io/badge/license-CC--BY--SA--4.0-blue)
 
@@ -38,6 +38,8 @@ No restart, no manual registration. Every skill under `skills/` gets picked up a
 
 | Cabinet | Operational Title | What it does | Insert token when... |
 |---|---|---|---|
+| [`bootleg-cartridge-check`](skills/bootleg-cartridge-check) | Third-party skill scanner: static security scan of a skill or plugin before you trust it | Reads another skill's files (never executes, imports, or installs anything found in them) through a stdlib Python rule engine covering ~50 static patterns across Critical/High/Medium/Low: credential/host overrides, unsafe deserialization, prompt-injection phrasing, persistence and tool-shadowing tricks, symlink abuse, privileged container config, and more. Reports a BLOCK/REVIEW/ALLOW verdict, with coverage gaps (binaries, password-protected archives, anything it couldn't safely read) always called out, never silently dropped. | You want to vet a third-party skill or plugin before installing, merging, or trusting it, and Python is available for the deeper, repeatable scan. |
+| [`cartridge-peek`](skills/cartridge-peek) | Quick third-party skill read-through: no script, no dependency | The no-script sibling to `bootleg-cartridge-check`: reads another skill's files directly and judges them against the same Critical/High/Medium/Low checklist, written straight into its own `SKILL.md`, no external file or Python needed. Covers categories a regex can't reliably judge (coercion-by-urgency phrasing, jailbreak framing, invocation-count-gated behavior, and more), at the cost of being more exposed to prompt injection since nothing pre-filters the content first. | You want a fast gut-check on a skill with no Python available, or a second, differently-shaped opinion alongside `bootleg-cartridge-check`. |
 | [`cartridge-scanner`](skills/cartridge-scanner) | Repo inventory: languages, dependencies, IaC, and containers, then recommends scanning tools needed | Inventories a repo before any deep scanning starts: language/LOC breakdown (via `scc`), package manager and dependency counts, private/internal registry detection, IaC and container inventory, ending in a tailored, tool-agnostic rundown of what scanning capability the repo needs. | You want a size/dependency/IaC/container inventory, or you're asking "what security tools do I need for this repo." |
 | [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map) | Threat modeler: architecture diagram plus STRIDE/OWASP walkthrough of the codebase | Reads a repo like an AppSec engineer on their first week: maps the architecture, draws an ASCII diagram, and threat models it with STRIDE, mapped to the OWASP Top 10 and Cheat Sheet Series. Teaching tone, not a scan report, built to be kept and reused. | You want a threat model, an attack-surface map, or a security-focused walkthrough of a codebase, not a validation of one specific finding. |
 | [`mini-map`](skills/mini-map) | Threat model condenser: compresses a full report into a ~50-line context file | Condenses an existing `dungeon-crawl-threat-map` report into a hard-capped, ~50-line context file (overview, auth/SSO/session, hardening, trust boundaries, business logic invariants, known risk areas) other skills can load without reading the whole threat model. | You want a quick, reusable context file before reviewing a finding or planning a remediation, or another skill needs fast background on how this app is protected. |
@@ -60,7 +62,13 @@ skill-sec-arcade/
 │   ├── plugin.json                      ── plugin manifest (name, description, author)
 │   └── marketplace.json                 ── catalog entry pointing "sec-arcade" -> ./
 ├── skills/
+│   ├── bootleg-cartridge-check/         ── static security scan of a third-party skill before you trust it
+│   │   ├── SKILL.md
+│   │   └── README.md
 │   ├── cargo-hold-cleanup/              ── container image remediation: ownership resolution, fix, rescan
+│   │   ├── SKILL.md
+│   │   └── README.md
+│   ├── cartridge-peek/                  ── no-script, no-dependency read-through sibling of bootleg-cartridge-check
 │   │   ├── SKILL.md
 │   │   └── README.md
 │   ├── cartridge-scanner/               ── inventories a repo: languages, LOC, deps, IaC, containers
@@ -94,11 +102,13 @@ skill-sec-arcade/
 │       ├── SKILL.md
 │       └── README.md
 ├── scripts/
+│   ├── bootleg_cartridge_scan.py        ── third-party skill security scan, used by bootleg-cartridge-check
 │   ├── cartridge_scan.py                ── repo inventory helper, used by cartridge-scanner
 │   ├── cloud_perm_audit.py              ── AWS IAM collect/analyze/normalize, used by cloud-player-perm-audit
 │   ├── dead_weight_scan.py              ── usage + live health scan, used by dead-weight-detector
 │   └── trim_reaper_scan.py              ── lifecycle-script, unpinned-version, candidate scans, used by trim-reaper
 ├── references/
+│   ├── bootleg-cartridge-rule-catalog.md ── bootleg-cartridge-check's static rule catalog, severity + source citations
 │   ├── container-remediation-playbook.md ── container finding ownership table, templates, checklists
 │   ├── iam-data-coverage-and-tools.md   ── IAM/CloudTrail data coverage + tool landscape lookup
 │   ├── iam-excess-risk-tiers.md         ── IAM overprovisioning risk tiers and rubric
@@ -120,9 +130,9 @@ skill-sec-arcade/
 New skill added? Update this tree and the table above.
 
 - **`.claude-plugin/`**: the plugin manifest and marketplace catalog entry. This is what makes `/plugin install sec-arcade` work.
-- **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently eleven cabinets installed: [`cartridge-scanner`](skills/cartridge-scanner), [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map), [`mini-map`](skills/mini-map), [`player-two-verdict`](skills/player-two-verdict), [`tilt-check`](skills/tilt-check), [`dead-weight-detector`](skills/dead-weight-detector), [`trim-reaper`](skills/trim-reaper), [`patch-for-the-high-score`](skills/patch-for-the-high-score), [`patch-boss-rush`](skills/patch-boss-rush), [`cargo-hold-cleanup`](skills/cargo-hold-cleanup), and [`cloud-player-perm-audit`](skills/cloud-player-perm-audit) (see table above).
-- **`scripts/`**: helper scripts a `SKILL.md` can shell out to. Currently holds `cartridge-scanner`'s repo inventory script, `dead-weight-detector`'s usage/health scan script, `trim-reaper`'s lifecycle-script/unpinned-version/candidate scan script, and `cloud-player-perm-audit`'s AWS IAM collect/analyze/normalize script (the one script here that shells out to a live AWS CLI and to locally-installed IAM tooling rather than reading repository files).
-- **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `cargo-hold-cleanup`'s container remediation playbook (ownership table, fix templates, no-fix decision order, verification checklist), `dungeon-crawl-threat-map`'s Web App Top 10 and language attack-vector lookups, the full OWASP Cheat Sheet Series catalog and the full OWASP Top Ten Projects catalog (the latter a static reference, not yet consumed by any skill), `cartridge-scanner`'s security scan capability map, `dead-weight-detector`'s registry health signal map, `trim-reaper`'s package-manager command lookup and phase-rules reference, `cloud-player-perm-audit`'s IAM data-coverage/tool-landscape lookup and risk-tier rubric, and the shared `save-states.md` convention used by every skill that offers to save its report to a file.
+- **`skills/`**: one subfolder per skill. Claude scans every `skills/*/SKILL.md` at load time, matches the frontmatter `description` against what you're doing, and activates the skill automatically, no slash command needed. Currently thirteen cabinets installed: [`bootleg-cartridge-check`](skills/bootleg-cartridge-check), [`cartridge-peek`](skills/cartridge-peek), [`cartridge-scanner`](skills/cartridge-scanner), [`dungeon-crawl-threat-map`](skills/dungeon-crawl-threat-map), [`mini-map`](skills/mini-map), [`player-two-verdict`](skills/player-two-verdict), [`tilt-check`](skills/tilt-check), [`dead-weight-detector`](skills/dead-weight-detector), [`trim-reaper`](skills/trim-reaper), [`patch-for-the-high-score`](skills/patch-for-the-high-score), [`patch-boss-rush`](skills/patch-boss-rush), [`cargo-hold-cleanup`](skills/cargo-hold-cleanup), and [`cloud-player-perm-audit`](skills/cloud-player-perm-audit) (see table above).
+- **`scripts/`**: helper scripts a `SKILL.md` can shell out to. Currently holds `bootleg-cartridge-check`'s static security scan of a third-party skill directory (stdlib-only, deliberately standalone from the scripts below since it scans untrusted content rather than the user's own repo), `cartridge-scanner`'s repo inventory script, `dead-weight-detector`'s usage/health scan script, `trim-reaper`'s lifecycle-script/unpinned-version/candidate scan script, and `cloud-player-perm-audit`'s AWS IAM collect/analyze/normalize script (the one script here that shells out to a live AWS CLI and to locally-installed IAM tooling rather than reading repository files). `cartridge-peek` is the one skill in this repo with no script at all, by design.
+- **`references/`**: shared cheatsheets/checklists multiple skills can point at instead of duplicating content. Currently holds `bootleg-cartridge-check`'s static rule catalog (severity, confidence, and source citations per rule, plus the categories its script defers), `cargo-hold-cleanup`'s container remediation playbook (ownership table, fix templates, no-fix decision order, verification checklist), `dungeon-crawl-threat-map`'s Web App Top 10 and language attack-vector lookups, the full OWASP Cheat Sheet Series catalog and the full OWASP Top Ten Projects catalog (the latter a static reference, not yet consumed by any skill), `cartridge-scanner`'s security scan capability map, `dead-weight-detector`'s registry health signal map, `trim-reaper`'s package-manager command lookup and phase-rules reference, `cloud-player-perm-audit`'s IAM data-coverage/tool-landscape lookup and risk-tier rubric, and the shared `save-states.md` convention used by every skill that offers to save its report to a file. `cartridge-peek` deliberately doesn't read any file here, its full checklist lives inside its own `SKILL.md`.
 - **`templates/`**: `SKILL.md.template`, the starting point for scaffolding a new skill.
 
 ## Adding a new skill
