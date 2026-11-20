@@ -20,6 +20,7 @@ created at the root of the target repo the first time anything gets saved into i
 | `mini-map` | `.SEC-Arcade-save_states/MINI_MAP.md` |
 | `cloud-player-perm-audit` | `.SEC-Arcade-save_states/CLOUD_PLAYER_PERM_AUDIT.md` |
 | `bootleg-cartridge-check` | `.SEC-Arcade-save_states/BOOTLEG_CARTRIDGE_CHECK.md` |
+| `cartridge-peek` | `.SEC-Arcade-save_states/CARTRIDGE_PEEK.md` |
 
 A fixed filename, not a timestamped one, is deliberate: overwriting the same path is what lets the user (or a future skill run) `git diff` it against the previous run and see exactly what drifted, new dependencies, a private registry that showed up, a usage tier that changed.
 

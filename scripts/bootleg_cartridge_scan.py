@@ -52,7 +52,7 @@
 # * EXIT CODES:   0 = success. 1 = missing CLI argument or the given path
 # *               does not exist.
 # * DEPENDENCIES: Python 3 standard library only (base64, json, os, re,
-# *               stat, sys, unicodedata, zipfile, datetime).
+# *               sys, unicodedata, zipfile, datetime).
 # * PERMISSIONS:  Read-only filesystem access under `path`. No network
 # *               access. No write access anywhere.
 # * ASSUMPTIONS:  Safe to *read* (never execute, never import) any file
@@ -94,7 +94,6 @@ import base64
 import json
 import os
 import re
-import stat
 import sys
 import unicodedata
 import zipfile
