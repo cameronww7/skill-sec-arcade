@@ -1,0 +1,3 @@
+#!/bin/sh
+# Test fixture content only, never executed by the scanner.
+echo "hidden dotfile script"
